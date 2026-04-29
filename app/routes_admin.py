@@ -104,6 +104,54 @@ def users_reset_pw(user_id: int):
     return redirect(url_for("admin.users"))
 
 
+@bp.route("/users/<int:user_id>/edit", methods=["POST"])
+@admin_required
+def users_edit(user_id: int):
+    """Edit a user's full_name and/or email. Username is intentionally
+    immutable — it's referenced by audit logs and (potentially) by external
+    systems, and renaming creates more risk than benefit."""
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for("admin.users"))
+
+    new_full_name = (request.form.get("full_name") or "").strip()
+    new_email = (request.form.get("email") or "").strip() or None
+
+    if not new_full_name:
+        flash("Full name cannot be empty.", "danger")
+        return redirect(url_for("admin.users"))
+    if len(new_full_name) > 160:
+        flash("Full name must be 160 characters or fewer.", "danger")
+        return redirect(url_for("admin.users"))
+    if new_email and len(new_email) > 160:
+        flash("Email must be 160 characters or fewer.", "danger")
+        return redirect(url_for("admin.users"))
+    if new_email and "@" not in new_email:
+        flash("Email is not a valid address.", "danger")
+        return redirect(url_for("admin.users"))
+
+    changes = {}
+    if new_full_name != user.full_name:
+        changes["full_name"] = {"from": user.full_name, "to": new_full_name}
+        user.full_name = new_full_name
+    if new_email != user.email:
+        changes["email"] = {"from": user.email, "to": new_email}
+        user.email = new_email
+
+    if not changes:
+        flash("No changes to save.", "info")
+        return redirect(url_for("admin.users"))
+
+    db.session.commit()
+    audit.record("user_edit", {
+        "target_username": user.username,
+        "changes": changes,
+    })
+    flash(f"Updated {user.username}.", "success")
+    return redirect(url_for("admin.users"))
+
+
 # ---------------------- Rotation ----------------------
 
 @bp.route("/rotation")
@@ -168,7 +216,48 @@ def settings():
         audit.record("settings_updated", {"keys": list(keys)})
         flash("Settings saved.", "success")
         return redirect(url_for("admin.settings"))
-    return render_template("admin/settings.html", settings=settings_dict())
+    from .mail import _config_status as _mail_status
+    return render_template(
+        "admin/settings.html",
+        settings=settings_dict(),
+        mail_status=_mail_status(),
+    )
+
+
+@bp.route("/settings/test-email", methods=["POST"])
+@admin_required
+def settings_test_email():
+    """Send a test email to the currently signed-in admin's address using
+    whichever MAIL_BACKEND is configured. Helpful for verifying SMTP /
+    Resend wiring after deploy."""
+    from .mail import send_mail, compose_test_email
+    user = g.user
+    if not user.email:
+        flash(
+            "Your admin account has no email on file. "
+            "Edit your user in /admin/users first.",
+            "danger",
+        )
+        return redirect(url_for("admin.settings"))
+    subject, body = compose_test_email(recipient_full_name=user.full_name)
+    result = send_mail(user.email, subject, body)
+    audit.record("mail_test", {
+        "recipient": user.email, "ok": result.get("ok"),
+        "backend": result.get("backend"), "error": result.get("error"),
+    })
+    if result.get("ok"):
+        flash(
+            f"Test email sent to {user.email} via {result['backend']} backend. "
+            f"Check your inbox.",
+            "success",
+        )
+    else:
+        flash(
+            f"Test email failed via {result.get('backend')} backend: "
+            f"{result.get('error')}",
+            "danger",
+        )
+    return redirect(url_for("admin.settings"))
 
 
 @bp.route("/settings/logo", methods=["POST"])

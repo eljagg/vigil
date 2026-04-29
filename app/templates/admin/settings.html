@@ -41,6 +41,55 @@
 </section>
 
 <section class="form-card">
+  <h2 style="margin-top: 0;">Email notifications</h2>
+  <p class="muted small">
+    Vigil can email the on-duty operator a weekly reminder. Configure the mail backend via environment variables, then run <code>flask --app app send-weekly-reminders</code> on a Monday-morning schedule (cron, Railway scheduled job, etc.).
+  </p>
+  <div class="mail-status mail-status-{% if mail_status.ready %}ok{% else %}warn{% endif %}">
+    <div>
+      <strong>Backend:</strong> <code>{{ mail_status.backend }}</code>
+      {% if mail_status.ready %}
+        <span class="pill pill-green">configured</span>
+      {% else %}
+        <span class="pill pill-amber">not ready</span>
+      {% endif %}
+    </div>
+    <div class="muted small" style="margin-top: 0.3rem;">{{ mail_status.details }}</div>
+  </div>
+
+  <form method="post" action="{{ url_for('admin.settings_test_email') }}" class="inline" style="margin-top: 0.7rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-small btn-primary"
+            {% if not current_user.email %}disabled title="Add an email to your admin account first"{% endif %}>
+      Send test email to me
+    </button>
+    {% if not current_user.email %}
+      <span class="muted small">Your account has no email on file — add one in <a href="{{ url_for('admin.users') }}">Users</a>.</span>
+    {% endif %}
+  </form>
+
+  <details class="muted small" style="margin-top: 0.85rem;">
+    <summary style="cursor: pointer;">How to configure SMTP or Resend</summary>
+    <p>Set these environment variables in Railway (or your <code>.env</code> for local dev) and redeploy:</p>
+    <p><strong>For SMTP</strong> (e.g. corporate mail relay, Gmail App Password, Mailgun SMTP):</p>
+    <pre class="code-block">MAIL_BACKEND=smtp
+MAIL_FROM=vigil@your-domain.com
+MAIL_BASE_URL=https://vigil-production-86a1.up.railway.app
+MAIL_SMTP_HOST=smtp.your-provider.com
+MAIL_SMTP_PORT=587
+MAIL_SMTP_USER=your-username
+MAIL_SMTP_PASSWORD=your-password
+MAIL_SMTP_USE_TLS=true</pre>
+    <p><strong>For Resend</strong> (https://resend.com — sign up, verify your domain, generate API key):</p>
+    <pre class="code-block">MAIL_BACKEND=resend
+MAIL_FROM=vigil@your-verified-domain.com
+MAIL_BASE_URL=https://vigil-production-86a1.up.railway.app
+MAIL_RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxx</pre>
+    <p>Default backend is <code>console</code> — emails are logged but not actually sent. Useful for testing without a mail provider.</p>
+  </details>
+</section>
+
+<section class="form-card">
   <h2 style="margin-top: 0;">Logo</h2>
   {% if settings.logo_path %}
     <img src="{{ settings.logo_path }}" alt="Current logo" class="logo-preview">

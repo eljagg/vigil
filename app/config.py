@@ -89,6 +89,22 @@ class Config:
     )
     LOGIN_RATE_LIMIT: str = os.environ.get("LOGIN_RATE_LIMIT", "5 per minute")
 
+    # Email notifications -------------------------------------------------
+    # Backend: 'console' (log only — default), 'smtp', or 'resend'.
+    MAIL_BACKEND: str = os.environ.get("MAIL_BACKEND", "console").lower().strip()
+    MAIL_FROM: str = os.environ.get("MAIL_FROM", "")
+    # Used to render absolute URLs inside email bodies. Set to your public
+    # Vigil URL, e.g. https://vigil.example.com
+    MAIL_BASE_URL: str = os.environ.get("MAIL_BASE_URL", "")
+    # SMTP backend ------
+    MAIL_SMTP_HOST: str = os.environ.get("MAIL_SMTP_HOST", "")
+    MAIL_SMTP_PORT: int = int(os.environ.get("MAIL_SMTP_PORT", "587") or "587")
+    MAIL_SMTP_USER: str = os.environ.get("MAIL_SMTP_USER", "")
+    MAIL_SMTP_PASSWORD: str = os.environ.get("MAIL_SMTP_PASSWORD", "")
+    MAIL_SMTP_USE_TLS: bool = _bool("MAIL_SMTP_USE_TLS", True)
+    # Resend backend ------
+    MAIL_RESEND_API_KEY: str = os.environ.get("MAIL_RESEND_API_KEY", "")
+
     # Misc ----------------------------------------------------------------
     PREFERRED_URL_SCHEME = "https" if SESSION_COOKIE_SECURE else "http"
 

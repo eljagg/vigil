@@ -56,8 +56,12 @@
       {% for u in users %}
       <tr>
         <td class="mono">{{ u.username }}</td>
-        <td>{{ u.full_name }}</td>
-        <td class="muted small">{{ u.email or '—' }}</td>
+        <td>
+          <span data-user-display="{{ u.id }}" data-field="full_name">{{ u.full_name }}</span>
+        </td>
+        <td class="muted small">
+          <span data-user-display="{{ u.id }}" data-field="email">{{ u.email or '—' }}</span>
+        </td>
         <td><span class="user-role role-{{ u.role }}">{{ u.role }}</span></td>
         <td>{{ u.auth_source }}</td>
         <td>{% if u.totp_enabled %}<span class="pill pill-green">on</span>{% else %}<span class="pill pill-amber">off</span>{% endif %}</td>
@@ -67,6 +71,9 @@
         </td>
         <td class="muted small">{{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else '—' }}</td>
         <td class="actions-cell">
+          <button type="button" class="link"
+                  data-edit-user="{{ u.id }}"
+                  aria-expanded="false">Edit</button>
           {% if u.id != current_user.id %}
           <form method="post" action="{{ url_for('admin.users_toggle', user_id=u.id) }}" class="inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -81,6 +88,24 @@
             <button type="submit" class="link">Reset</button>
           </form>
           {% endif %}
+        </td>
+      </tr>
+      <tr class="user-edit-row" id="user-edit-{{ u.id }}" style="display: none;">
+        <td colspan="9" style="background: var(--surface-2); padding: 0.7rem 1rem;">
+          <form method="post" action="{{ url_for('admin.users_edit', user_id=u.id) }}" class="form-row inline-edit-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="small">Full name
+              <input type="text" name="full_name" value="{{ u.full_name }}" required maxlength="160"
+                     style="min-width: 220px;">
+            </label>
+            <label class="small">Email
+              <input type="email" name="email" value="{{ u.email or '' }}" maxlength="160" placeholder="(optional)"
+                     style="min-width: 220px;">
+            </label>
+            <button type="submit" class="btn btn-small btn-primary">Save</button>
+            <button type="button" class="btn btn-small btn-ghost" data-cancel-edit="{{ u.id }}">Cancel</button>
+            <span class="muted small">Username (<code>{{ u.username }}</code>) cannot be changed.</span>
+          </form>
         </td>
       </tr>
       {% endfor %}

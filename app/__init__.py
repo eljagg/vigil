@@ -184,3 +184,106 @@ def _register_cli(app: Flask) -> None:
         user.password_hash = hash_password(password)
         db.session.commit()
         click.echo(f"Password updated for '{username}'.")
+
+    @app.cli.command("send-test-email")
+    @click.argument("username")
+    def send_test_email(username: str) -> None:
+        """Send a test email to USERNAME using the current MAIL_BACKEND.
+
+        Useful for verifying SMTP / Resend config after setting up env vars.
+        """
+        from .extensions import db as _db
+        from .models import User as _User
+        from .mail import send_mail, compose_test_email, _config_status
+
+        status = _config_status()
+        click.echo(f"Mail backend: {status['backend']} (ready={status['ready']})")
+        click.echo(f"  {status['details']}")
+
+        user = _db.session.scalar(_db.select(_User).where(_User.username == username))
+        if not user:
+            click.echo(f"User '{username}' not found.", err=True)
+            raise SystemExit(1)
+        if not user.email:
+            click.echo(f"User '{username}' has no email address on file.", err=True)
+            raise SystemExit(1)
+
+        subject, body = compose_test_email(recipient_full_name=user.full_name)
+        result = send_mail(user.email, subject, body)
+        if result.get("ok"):
+            click.echo(f"OK — sent via {result['backend']} to {user.email}")
+        else:
+            click.echo(f"FAILED via {result.get('backend')}: {result.get('error')}", err=True)
+            raise SystemExit(2)
+
+    @app.cli.command("send-weekly-reminders")
+    @click.option("--dry-run", is_flag=True, help="Show what would be sent, don't actually send.")
+    def send_weekly_reminders(dry_run: bool) -> None:
+        """Send the weekly duty-reminder email to the on-duty operator.
+
+        Intended to run on a schedule (Monday morning). Safe to run multiple
+        times — each run sends an updated snapshot of this week's coverage.
+        """
+        import datetime as _dt
+        from .extensions import db as _db
+        from .models import PathEntry as _PathEntry, Scan as _Scan, settings_dict
+        from . import rotation as _rotation
+        from .mail import send_mail, compose_weekly_reminder, _config_status
+        from sqlalchemy import func, select as _select
+
+        status = _config_status()
+        click.echo(f"Mail backend: {status['backend']}, ready={status['ready']}")
+
+        on_duty = _rotation.current_assignment()
+        if not on_duty:
+            click.echo("No rotation assignment for this week — nothing to send.")
+            return
+        if not on_duty.get("email"):
+            click.echo(
+                f"On-duty user '{on_duty.get('username')}' has no email on file — "
+                f"set one in /admin/users.",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        # Compute coverage for the current week
+        today = _dt.date.today()
+        monday = today - _dt.timedelta(days=today.weekday())
+        sunday = monday + _dt.timedelta(days=6)
+
+        all_paths = _db.session.scalars(_select(_PathEntry)).all()
+        scanned_path_ids = set(_db.session.scalars(
+            _select(_Scan.path_entry_id).where(
+                _Scan.status == "completed",
+                _Scan.is_hidden.is_(False),
+                func.date(_Scan.started_at) >= monday,
+                func.date(_Scan.started_at) <= sunday,
+            ).distinct()
+        ).all())
+        missed = [pe.label or pe.path for pe in all_paths if pe.id not in scanned_path_ids]
+
+        company = (settings_dict() or {}).get("company_name", "")
+
+        subject, body = compose_weekly_reminder(
+            recipient_full_name=on_duty["full_name"],
+            week_start=str(monday), week_end=str(sunday),
+            paths_total=len(all_paths),
+            paths_scanned=len(all_paths) - len(missed),
+            missed_paths=missed,
+            company_name=company,
+        )
+
+        click.echo(f"Recipient: {on_duty['full_name']} <{on_duty['email']}>")
+        click.echo(f"Subject:   {subject}")
+        click.echo(f"Body preview:\n---\n{body}\n---")
+
+        if dry_run:
+            click.echo("(--dry-run) not sent.")
+            return
+
+        result = send_mail(on_duty["email"], subject, body)
+        if result.get("ok"):
+            click.echo(f"OK — sent via {result['backend']}")
+        else:
+            click.echo(f"FAILED via {result.get('backend')}: {result.get('error')}", err=True)
+            raise SystemExit(2)

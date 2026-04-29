@@ -216,4 +216,28 @@
       }
     });
   });
+  // --- Admin: inline edit row toggle on /admin/users ---
+  document.querySelectorAll('[data-edit-user]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const userId = btn.getAttribute('data-edit-user');
+      const row = document.getElementById(`user-edit-${userId}`);
+      if (!row) return;
+      const isOpen = row.style.display !== 'none';
+      row.style.display = isOpen ? 'none' : '';
+      btn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      if (!isOpen) {
+        const firstInput = row.querySelector('input[type="text"]');
+        if (firstInput) firstInput.focus();
+      }
+    });
+  });
+  document.querySelectorAll('[data-cancel-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const userId = btn.getAttribute('data-cancel-edit');
+      const row = document.getElementById(`user-edit-${userId}`);
+      const trigger = document.querySelector(`[data-edit-user="${userId}"]`);
+      if (row) row.style.display = 'none';
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    });
+  });
 })();
