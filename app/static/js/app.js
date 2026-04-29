@@ -240,4 +240,29 @@
       if (trigger) trigger.setAttribute('aria-expanded', 'false');
     });
   });
+
+  // --- Admin: inline edit row toggle on /admin/paths ---
+  document.querySelectorAll('[data-edit-path]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const pathId = btn.getAttribute('data-edit-path');
+      const row = document.getElementById(`path-edit-${pathId}`);
+      if (!row) return;
+      const isOpen = row.style.display !== 'none';
+      row.style.display = isOpen ? 'none' : '';
+      btn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      if (!isOpen) {
+        const firstInput = row.querySelector('input[type="text"], textarea');
+        if (firstInput) firstInput.focus();
+      }
+    });
+  });
+  document.querySelectorAll('[data-cancel-path-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const pathId = btn.getAttribute('data-cancel-path-edit');
+      const row = document.getElementById(`path-edit-${pathId}`);
+      const trigger = document.querySelector(`[data-edit-path="${pathId}"]`);
+      if (row) row.style.display = 'none';
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    });
+  });
 })();

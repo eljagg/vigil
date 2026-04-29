@@ -738,6 +738,20 @@ code, .mono {
   margin-bottom: 0.4rem; flex-wrap: wrap;
 }
 
+/* Overdue paths panel — same shape as anomalies, more urgent border */
+.overdue-panel {
+  margin-bottom: 1.5rem;
+  border-left: 4px solid var(--accent-danger);
+  padding-left: 0.8rem;
+}
+.overdue-head {
+  display: flex; align-items: baseline; gap: 0.7rem;
+  margin-bottom: 0.4rem; flex-wrap: wrap;
+}
+.row-never    { background: var(--row-shrunk); }
+.row-critical { background: var(--row-shrunk); }
+.row-overdue  { background: var(--row-new); }
+
 /* Inline file expansion under rollup rows */
 .files-expand-row td { padding: 0 !important; }
 .files-expand {
@@ -991,6 +1005,37 @@ code, .mono {
   outline: none;
   border-color: var(--brand);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+}
+.inline-edit-form .full-width {
+  flex-basis: 100%;
+}
+.inline-edit-form textarea {
+  padding: 0.4rem 0.6rem;
+  font-size: 13.5px;
+  font-family: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-transform: none; letter-spacing: normal;
+  resize: vertical;
+}
+.inline-edit-form textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+}
+.form-card textarea {
+  padding: 0.5rem 0.7rem;
+  font-size: 13.5px;
+  font-family: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .mail-status {

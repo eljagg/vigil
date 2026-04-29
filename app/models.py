@@ -71,9 +71,17 @@ class PathEntry(db.Model):
     label:      Mapped[Optional[str]] = mapped_column(String(160))
     entered_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     entered_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # v2.0.6: expected-paths + notes
+    is_expected:     Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    expected_cadence: Mapped[Optional[str]] = mapped_column(String(16))  # 'daily','weekly','fortnightly'
+    notes:           Mapped[Optional[str]] = mapped_column(Text)
 
     __table_args__ = (
         Index("ix_path_entries_path", "path"),
+        CheckConstraint(
+            "expected_cadence IS NULL OR expected_cadence IN ('daily','weekly','fortnightly')",
+            name="ck_path_entries_cadence",
+        ),
     )
 
 

@@ -246,12 +246,23 @@ def _register_cli(app: Flask) -> None:
             )
             raise SystemExit(1)
 
-        # Compute coverage for the current week
+        # Compute coverage for the current week. When any path is marked
+        # is_expected, scope the reminder to those — they're the configured
+        # checklist. If none are marked, fall back to all known paths.
         today = _dt.date.today()
         monday = today - _dt.timedelta(days=today.weekday())
         sunday = monday + _dt.timedelta(days=6)
 
-        all_paths = _db.session.scalars(_select(_PathEntry)).all()
+        expected = _db.session.scalars(
+            _select(_PathEntry).where(_PathEntry.is_expected.is_(True))
+        ).all()
+        if expected:
+            relevant = expected
+            click.echo(f"Using {len(expected)} expected path(s) as the checklist.")
+        else:
+            relevant = _db.session.scalars(_select(_PathEntry)).all()
+            click.echo(f"No expected paths defined — falling back to all {len(relevant)} known paths.")
+
         scanned_path_ids = set(_db.session.scalars(
             _select(_Scan.path_entry_id).where(
                 _Scan.status == "completed",
@@ -260,15 +271,15 @@ def _register_cli(app: Flask) -> None:
                 func.date(_Scan.started_at) <= sunday,
             ).distinct()
         ).all())
-        missed = [pe.label or pe.path for pe in all_paths if pe.id not in scanned_path_ids]
+        missed = [pe.label or pe.path for pe in relevant if pe.id not in scanned_path_ids]
 
         company = (settings_dict() or {}).get("company_name", "")
 
         subject, body = compose_weekly_reminder(
             recipient_full_name=on_duty["full_name"],
             week_start=str(monday), week_end=str(sunday),
-            paths_total=len(all_paths),
-            paths_scanned=len(all_paths) - len(missed),
+            paths_total=len(relevant),
+            paths_scanned=len(relevant) - len(missed),
             missed_paths=missed,
             company_name=company,
         )

@@ -108,7 +108,12 @@ def _anomalies(threshold_pct: float = 20.0, limit: int = 10) -> list[dict]:
 
 
 def _week_counters() -> dict:
-    """Counters scoped to the current calendar week (Mon-Sun)."""
+    """Counters for the current calendar week (Mon-Sun).
+
+    "Paths covered" is computed against the *expected* path list when
+    any expected paths are configured, else falls back to all known
+    paths (legacy behaviour, useful before any expected paths are set).
+    """
     today = datetime.date.today()
     monday = today - datetime.timedelta(days=today.weekday())
     sunday = monday + datetime.timedelta(days=6)
@@ -122,16 +127,35 @@ def _week_counters() -> dict:
         )
     ) or 0
 
-    paths_covered = db.session.scalar(
-        select(func.count(func.distinct(Scan.path_entry_id))).where(
-            Scan.status == "completed",
-            Scan.is_hidden.is_(False),
-            func.date(Scan.started_at) >= monday,
-            func.date(Scan.started_at) <= sunday,
-        )
+    expected_count = db.session.scalar(
+        select(func.count(PathEntry.id)).where(PathEntry.is_expected.is_(True))
     ) or 0
+    use_expected = expected_count > 0
 
-    paths_total = db.session.scalar(select(func.count(PathEntry.id))) or 0
+    if use_expected:
+        # Paths covered: distinct expected path_entry_ids scanned this week
+        paths_covered = db.session.scalar(
+            select(func.count(func.distinct(Scan.path_entry_id)))
+            .join(PathEntry, PathEntry.id == Scan.path_entry_id)
+            .where(
+                PathEntry.is_expected.is_(True),
+                Scan.status == "completed",
+                Scan.is_hidden.is_(False),
+                func.date(Scan.started_at) >= monday,
+                func.date(Scan.started_at) <= sunday,
+            )
+        ) or 0
+        paths_total = expected_count
+    else:
+        paths_covered = db.session.scalar(
+            select(func.count(func.distinct(Scan.path_entry_id))).where(
+                Scan.status == "completed",
+                Scan.is_hidden.is_(False),
+                func.date(Scan.started_at) >= monday,
+                func.date(Scan.started_at) <= sunday,
+            )
+        ) or 0
+        paths_total = db.session.scalar(select(func.count(PathEntry.id))) or 0
 
     scans_today = db.session.scalar(
         select(func.count(Scan.id)).where(
@@ -146,7 +170,65 @@ def _week_counters() -> dict:
         "paths_covered": paths_covered,
         "paths_total": paths_total,
         "scans_today": scans_today,
+        "expected_only": use_expected,
     }
+
+
+# Cadence → maximum tolerated gap (in days) since the last completed scan
+_CADENCE_DAYS = {
+    "daily":       1,
+    "weekly":      7,
+    "fortnightly": 14,
+}
+
+
+def _overdue_paths() -> list[dict]:
+    """Expected paths whose last completed scan exceeds their cadence's grace
+    window — or which have never been scanned at all. Sorted worst-first."""
+    today = datetime.datetime.now(datetime.UTC)
+    out = []
+    expected = db.session.scalars(
+        select(PathEntry).where(PathEntry.is_expected.is_(True))
+    ).all()
+    for pe in expected:
+        max_days = _CADENCE_DAYS.get(pe.expected_cadence or "weekly", 7)
+        last = db.session.scalar(
+            select(Scan).where(
+                Scan.path_entry_id == pe.id,
+                Scan.status == "completed",
+                Scan.is_hidden.is_(False),
+            ).order_by(desc(Scan.started_at)).limit(1)
+        )
+        if last is None:
+            out.append({
+                "id": pe.id, "label": pe.label or pe.path,
+                "path": pe.path, "cadence": pe.expected_cadence or "weekly",
+                "last_scan_at": None,
+                "days_since": None,
+                "max_days": max_days,
+                "severity": "never",
+            })
+            continue
+        # Make 'last.started_at' timezone-aware for comparison
+        last_at = last.started_at
+        if last_at.tzinfo is None:
+            last_at = last_at.replace(tzinfo=datetime.UTC)
+        delta = today - last_at
+        days_since = delta.total_seconds() / 86400.0
+        if days_since > max_days:
+            severity = "critical" if days_since > max_days * 2 else "overdue"
+            out.append({
+                "id": pe.id, "label": pe.label or pe.path,
+                "path": pe.path, "cadence": pe.expected_cadence or "weekly",
+                "last_scan_at": last_at,
+                "days_since": days_since,
+                "max_days": max_days,
+                "severity": severity,
+            })
+    # Worst-first ordering: never-scanned, then most-overdue, then by cadence severity
+    severity_rank = {"never": 0, "critical": 1, "overdue": 2}
+    out.sort(key=lambda r: (severity_rank[r["severity"]], -(r["days_since"] or 1e9)))
+    return out
 
 
 # ---------------------- Dashboard ----------------------
@@ -176,6 +258,7 @@ def dashboard():
     counters = _week_counters()
     storage_trend = _storage_trend(days=14)
     anomalies = _anomalies(threshold_pct=20.0, limit=10)
+    overdue = _overdue_paths()
 
     # Per-path roll-up: most recent non-hidden scan per path entry
     per_path = []
@@ -189,6 +272,9 @@ def dashboard():
         entered_by = db.session.get(User, pe.entered_by) if pe.entered_by else None
         per_path.append({
             "id": pe.id, "path": pe.path, "label": pe.label,
+            "is_expected": pe.is_expected,
+            "expected_cadence": pe.expected_cadence,
+            "notes": pe.notes,
             "entered_by_username": entered_by.username if entered_by else None,
             "last_scan_id": last.id if last else None,
             "last_started": last.started_at if last else None,
@@ -212,6 +298,7 @@ def dashboard():
         "dashboard.html",
         recent=recent_rows, counters=counters,
         storage_trend=storage_trend, anomalies=anomalies,
+        overdue=overdue,
         per_path=per_path,
         on_duty=on_duty, upcoming=upcoming,
         missed_weeks=missed_weeks, partial_weeks=partial_weeks,
@@ -235,7 +322,8 @@ def scan_new():
     recent_paths = [{"path": r.path, "label": r.label, "last_entered": r.last} for r in recent_paths]
 
     # Rescan pre-fill: if ?from_scan=N is given, pull label + workstation from that scan.
-    prefill = {"label": "", "workstation": "", "path_hint": "", "from_scan_id": None}
+    prefill = {"label": "", "workstation": "", "path_hint": "",
+               "from_scan_id": None, "notes": ""}
     from_scan = request.args.get("from_scan", type=int)
     if from_scan:
         prior = db.session.get(Scan, from_scan)
@@ -244,6 +332,7 @@ def scan_new():
             if prior_pe:
                 prefill["label"] = prior_pe.label or ""
                 prefill["path_hint"] = prior_pe.path or ""
+                prefill["notes"] = prior_pe.notes or ""
             prefill["workstation"] = prior.workstation or ""
             prefill["from_scan_id"] = prior.id
 

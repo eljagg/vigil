@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Paths{% endblock %}
+{% block content %}
+<h1>Paths</h1>
+<p class="muted">
+  Define which folders <strong>should</strong> be scanned and how often.
+  Paths marked <strong>expected</strong> contribute to weekly coverage and
+  surface as overdue when their cadence lapses. Ad-hoc paths (those discovered
+  by a one-off scan) stay listed but don't count toward coverage.
+</p>
+
+<section class="form-card">
+  <h2 style="margin-top: 0;">Add expected path</h2>
+  <p class="muted small">
+    Use this to register a folder Vigil <em>should</em> see scanned even before
+    its first scan happens — that way "missing for 2 weeks" actually surfaces
+    instead of the path being invisible to the system.
+  </p>
+  <form method="post" action="{{ url_for('admin.paths_new') }}" class="form form-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Label <span class="muted small">(shown on dashboard)</span>
+      <input type="text" name="label" required maxlength="160"
+             placeholder="e.g. Sage Owner full backup">
+    </label>
+    <label>Picker hint <span class="muted small">(optional)</span>
+      <input type="text" name="path" maxlength="120"
+             placeholder="e.g. SageOwner — used to match scans">
+    </label>
+    <label>Cadence
+      <select name="expected_cadence">
+        {% for c in cadences %}
+        <option value="{{ c }}" {% if c == 'weekly' %}selected{% endif %}>{{ c|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="full-width">Notes <span class="muted small">(visible to operators on /scan/new and scan detail)</span>
+      <textarea name="notes" rows="2" maxlength="4000" placeholder="Runbook notes — typical size, what to do if missing, who to contact, etc."></textarea>
+    </label>
+    <button type="submit" class="btn btn-primary">Add path</button>
+  </form>
+</section>
+
+<section>
+  <h2>All paths</h2>
+  {% if paths %}
+  <div class="grid-wrap">
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Label / Path</th>
+        <th>Cadence</th>
+        <th>Last scan</th>
+        <th class="num">Scans</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in paths %}
+      <tr>
+        <td>
+          {% if p.is_expected %}
+            <span class="pill pill-info">expected</span>
+          {% else %}
+            <span class="pill pill-amber">ad-hoc</span>
+          {% endif %}
+        </td>
+        <td>
+          <strong>{{ p.label or p.path }}</strong>
+          {% if p.label and p.path != p.label %}
+            <div class="muted small mono">picker: {{ p.path }}</div>
+          {% endif %}
+          {% if p.notes %}
+            <details class="muted small">
+              <summary style="cursor: pointer;">Notes</summary>
+              <div style="white-space: pre-wrap; padding: 0.4rem 0.6rem; background: var(--surface-2); border-radius: 4px; margin-top: 0.3rem;">{{ p.notes }}</div>
+            </details>
+          {% endif %}
+        </td>
+        <td>{{ p.expected_cadence or '—' }}</td>
+        <td class="muted small">
+          {{ p.last_scan_at.strftime('%Y-%m-%d %H:%M') if p.last_scan_at else 'never' }}
+        </td>
+        <td class="num">{{ p.scan_count }}</td>
+        <td class="actions-cell">
+          <button type="button" class="link"
+                  data-edit-path="{{ p.id }}"
+                  aria-expanded="false">Edit</button>
+          {% if p.scan_count == 0 %}
+          <form method="post" action="{{ url_for('admin.paths_delete', path_id=p.id) }}" class="inline"
+                onsubmit="return confirm('Delete path &quot;{{ p.label or p.path }}&quot;? This is irreversible.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="link">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      <tr class="path-edit-row" id="path-edit-{{ p.id }}" style="display: none;">
+        <td colspan="6" style="background: var(--surface-2); padding: 0.7rem 1rem;">
+          <form method="post" action="{{ url_for('admin.paths_edit', path_id=p.id) }}" class="form-row inline-edit-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="small">Label
+              <input type="text" name="label" value="{{ p.label or '' }}" maxlength="160" style="min-width: 220px;">
+            </label>
+            <label class="small" style="display: flex; flex-direction: row; align-items: center; gap: 0.4rem; text-transform: none; font-size: 13px; color: var(--text);">
+              <input type="checkbox" name="is_expected" {% if p.is_expected %}checked{% endif %}
+                     style="width: auto;">
+              Expected
+            </label>
+            <label class="small">Cadence
+              <select name="expected_cadence">
+                <option value="" {% if not p.expected_cadence %}selected{% endif %}>—</option>
+                {% for c in cadences %}
+                <option value="{{ c }}" {% if p.expected_cadence == c %}selected{% endif %}>{{ c|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="small full-width">Notes
+              <textarea name="notes" rows="3" maxlength="4000" style="min-width: 480px;">{{ p.notes or '' }}</textarea>
+            </label>
+            <button type="submit" class="btn btn-small btn-primary">Save</button>
+            <button type="button" class="btn btn-small btn-ghost" data-cancel-path-edit="{{ p.id }}">Cancel</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No paths defined yet. Add an expected path above, or run a scan from <a href="{{ url_for('main.scan_new') }}">New scan</a> to register a folder.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -134,6 +134,58 @@
   </div>
 </div>
 
+{# ====================  Overdue expected paths  ==================== #}
+{% if overdue %}
+<section class="overdue-panel collapsible" data-section-id="overdue">
+  <div class="overdue-head collapsible-heading">
+    <span class="chevron">▼</span>
+    <h2 style="margin: 0;">Overdue paths — past their cadence window</h2>
+    <span class="muted small">{{ overdue|length }} folder{{ 's' if overdue|length != 1 else '' }} need attention</span>
+  </div>
+  <div class="collapsible-body">
+  <div class="grid-wrap">
+    <table class="grid grid-tight">
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Label / Path</th>
+          <th>Cadence</th>
+          <th>Last scan</th>
+          <th class="num">Days overdue</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in overdue %}
+        <tr class="row-{{ o.severity }}">
+          <td>
+            {% if o.severity == 'never' %}<span class="pill pill-red">never scanned</span>
+            {% elif o.severity == 'critical' %}<span class="pill pill-red">critical</span>
+            {% else %}<span class="pill pill-amber">overdue</span>{% endif %}
+          </td>
+          <td><strong>{{ o.label }}</strong></td>
+          <td>{{ o.cadence }}</td>
+          <td class="muted small">
+            {% if o.last_scan_at %}{{ o.last_scan_at.strftime('%Y-%m-%d %H:%M') }}{% else %}—{% endif %}
+          </td>
+          <td class="num">
+            {% if o.days_since is none %}—
+            {% else %}
+              {% set excess = o.days_since - o.max_days %}
+              <strong>+{{ '%.1f' | format(excess) }}</strong>
+              <span class="muted small">/ {{ o.max_days }}d window</span>
+            {% endif %}
+          </td>
+          <td><a href="{{ url_for('main.scan_new') }}" class="link">Scan now →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+</section>
+{% endif %}
+
 {# ====================  Anomalies callout  ==================== #}
 {% if anomalies %}
 <section class="anomalies-panel collapsible" data-section-id="anomalies">
@@ -227,7 +279,14 @@
       <tr>
         <td>
           <strong>{{ r.label or r.path }}</strong>
+          {% if r.is_expected %}<span class="pill pill-info" style="margin-left: 0.3em;">{{ r.expected_cadence or 'expected' }}</span>{% endif %}
           {% if r.label and r.label != r.path %}<div class="muted small mono">picker: {{ r.path }}</div>{% endif %}
+          {% if r.notes %}
+          <details class="muted small" style="margin-top: 0.25rem;">
+            <summary style="cursor: pointer;">Notes</summary>
+            <div style="white-space: pre-wrap; padding: 0.4rem 0.6rem; background: var(--surface-2); border-radius: 4px; margin-top: 0.25rem; font-family: inherit;">{{ r.notes }}</div>
+          </details>
+          {% endif %}
         </td>
         <td class="muted small">{{ r.last_workstation or '—' }}</td>
         <td>{{ r.last_started.strftime('%Y-%m-%d %H:%M') if r.last_started else '—' }}</td>

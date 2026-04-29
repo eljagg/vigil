@@ -176,24 +176,58 @@ def current_week_path_coverage() -> dict:
     today = datetime.date.today()
     monday, sunday = week_bounds(today)
 
-    total = db.session.scalar(select(func.count(PathEntry.id))) or 0
-    scanned = db.session.scalar(
-        select(func.count(func.distinct(Scan.path_entry_id))).where(
-            Scan.status == "completed",
-            func.date(Scan.started_at) >= monday,
-            func.date(Scan.started_at) <= sunday,
-        )
+    # Match dashboard counter logic: when expected paths exist, scope to
+    # those; else fall back to all known paths.
+    expected_count = db.session.scalar(
+        select(func.count(PathEntry.id)).where(PathEntry.is_expected.is_(True))
     ) or 0
 
-    uncovered = db.session.execute(select(PathEntry).where(
-        ~PathEntry.id.in_(
-            select(Scan.path_entry_id).where(
+    if expected_count > 0:
+        total = expected_count
+        scanned = db.session.scalar(
+            select(func.count(func.distinct(Scan.path_entry_id)))
+            .join(PathEntry, PathEntry.id == Scan.path_entry_id)
+            .where(
+                PathEntry.is_expected.is_(True),
                 Scan.status == "completed",
+                Scan.is_hidden.is_(False),
                 func.date(Scan.started_at) >= monday,
                 func.date(Scan.started_at) <= sunday,
             )
-        )
-    ).order_by(desc(PathEntry.entered_at))).scalars().all()
+        ) or 0
+        uncovered_q = select(PathEntry).where(
+            PathEntry.is_expected.is_(True),
+            ~PathEntry.id.in_(
+                select(Scan.path_entry_id).where(
+                    Scan.status == "completed",
+                    Scan.is_hidden.is_(False),
+                    func.date(Scan.started_at) >= monday,
+                    func.date(Scan.started_at) <= sunday,
+                )
+            )
+        ).order_by(desc(PathEntry.entered_at))
+    else:
+        total = db.session.scalar(select(func.count(PathEntry.id))) or 0
+        scanned = db.session.scalar(
+            select(func.count(func.distinct(Scan.path_entry_id))).where(
+                Scan.status == "completed",
+                Scan.is_hidden.is_(False),
+                func.date(Scan.started_at) >= monday,
+                func.date(Scan.started_at) <= sunday,
+            )
+        ) or 0
+        uncovered_q = select(PathEntry).where(
+            ~PathEntry.id.in_(
+                select(Scan.path_entry_id).where(
+                    Scan.status == "completed",
+                    Scan.is_hidden.is_(False),
+                    func.date(Scan.started_at) >= monday,
+                    func.date(Scan.started_at) <= sunday,
+                )
+            )
+        ).order_by(desc(PathEntry.entered_at))
+
+    uncovered = db.session.execute(uncovered_q).scalars().all()
 
     return {
         "total": total, "scanned": scanned, "uncovered": total - scanned,

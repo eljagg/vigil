@@ -40,6 +40,13 @@
 </section>
 {% endif %}
 
+{% if path_entry.notes %}
+<section class="banner-info">
+  <strong>Runbook notes for this path:</strong>
+  <div style="white-space: pre-wrap; margin-top: 0.4rem;">{{ path_entry.notes }}</div>
+</section>
+{% endif %}
+
 {% set has_prior_data = by_size | selectattr('prev_size_bytes', 'ne', none) | list %}
 {% if not has_prior_data and scan.status == 'completed' and (scan.file_count or 0) > 0 %}
 <section class="banner-info">

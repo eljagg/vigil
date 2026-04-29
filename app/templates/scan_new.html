@@ -9,6 +9,12 @@
 
 {% if prefill.from_scan_id %}
 <p class="muted">Rescanning previously-scanned folder <strong>{{ prefill.label }}</strong>. Pick the same folder again to continue the diff history.</p>
+{% if prefill.notes %}
+<section class="banner-info">
+  <strong>Runbook notes for this path:</strong>
+  <div style="white-space: pre-wrap; margin-top: 0.4rem;">{{ prefill.notes }}</div>
+</section>
+{% endif %}
 {% else %}
 <p class="muted">Vigil reads file metadata only — names, sizes, modification times. File contents never leave your workstation.</p>
 {% endif %}

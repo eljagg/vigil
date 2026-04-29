@@ -7,13 +7,14 @@ from flask import (
     Blueprint, current_app, flash, g, redirect, render_template, request,
     url_for,
 )
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
+from sqlalchemy.sql.functions import count as func_count
 from werkzeug.utils import secure_filename
 
 from . import audit, rotation
 from .auth import admin_required, hash_password
 from .extensions import db
-from .models import AuditLog, User, settings_dict, upsert_setting
+from .models import AuditLog, PathEntry, Scan, User, settings_dict, upsert_setting
 from .storage import upload_logo
 
 
@@ -294,3 +295,178 @@ def audit_log():
         select(AuditLog).order_by(desc(AuditLog.timestamp)).limit(500)
     ).all()
     return render_template("admin/audit.html", entries=entries)
+
+
+# ---------------------- Expected paths ----------------------
+
+_VALID_CADENCES = ("daily", "weekly", "fortnightly")
+
+
+@bp.route("/paths")
+@admin_required
+def paths_view():
+    """Admin view of all known paths, with controls to mark them expected
+    and edit cadence + notes."""
+    paths = db.session.scalars(
+        select(PathEntry).order_by(
+            desc(PathEntry.is_expected), PathEntry.label, PathEntry.path
+        )
+    ).all()
+
+    # Light enrichment: last scan timestamp per path, count of scans
+    rows = []
+    for pe in paths:
+        last = db.session.scalar(
+            select(Scan).where(
+                Scan.path_entry_id == pe.id,
+                Scan.is_hidden.is_(False),
+            ).order_by(desc(Scan.started_at)).limit(1)
+        )
+        scan_count = db.session.scalar(
+            select(func_count(Scan.id)).where(
+                Scan.path_entry_id == pe.id,
+                Scan.is_hidden.is_(False),
+            )
+        ) or 0
+        rows.append({
+            "id": pe.id, "path": pe.path, "label": pe.label,
+            "is_expected": pe.is_expected,
+            "expected_cadence": pe.expected_cadence,
+            "notes": pe.notes,
+            "last_scan_at": last.started_at if last else None,
+            "scan_count": scan_count,
+        })
+
+    return render_template("admin/paths.html",
+                           paths=rows, cadences=_VALID_CADENCES)
+
+
+@bp.route("/paths/<int:path_id>/edit", methods=["POST"])
+@admin_required
+def paths_edit(path_id: int):
+    pe = db.session.get(PathEntry, path_id)
+    if not pe:
+        flash("Path not found.", "danger")
+        return redirect(url_for("admin.paths_view"))
+
+    is_expected = (request.form.get("is_expected") == "on")
+    cadence = (request.form.get("expected_cadence") or "").strip() or None
+    notes = (request.form.get("notes") or "").strip() or None
+    new_label = (request.form.get("label") or "").strip() or None
+
+    if cadence and cadence not in _VALID_CADENCES:
+        flash(f"Cadence must be one of: {', '.join(_VALID_CADENCES)}.", "danger")
+        return redirect(url_for("admin.paths_view"))
+
+    if is_expected and not cadence:
+        # Default to weekly when marking expected without specifying
+        cadence = "weekly"
+    if not is_expected:
+        # Don't keep stale cadence info on non-expected paths
+        cadence = None
+
+    if notes and len(notes) > 4000:
+        flash("Notes must be 4000 characters or fewer.", "danger")
+        return redirect(url_for("admin.paths_view"))
+
+    changes = {}
+    if is_expected != pe.is_expected:
+        changes["is_expected"] = {"from": pe.is_expected, "to": is_expected}
+        pe.is_expected = is_expected
+    if cadence != pe.expected_cadence:
+        changes["expected_cadence"] = {"from": pe.expected_cadence, "to": cadence}
+        pe.expected_cadence = cadence
+    if notes != pe.notes:
+        # Truncate before/after for the audit log to keep entries small
+        prev = (pe.notes or "")[:200]
+        nxt = (notes or "")[:200]
+        changes["notes"] = {"from": prev, "to": nxt}
+        pe.notes = notes
+    if new_label is not None and new_label != pe.label:
+        changes["label"] = {"from": pe.label, "to": new_label}
+        pe.label = new_label
+
+    if not changes:
+        flash("No changes to save.", "info")
+        return redirect(url_for("admin.paths_view"))
+
+    db.session.commit()
+    audit.record("path_edit", {
+        "path_entry_id": pe.id, "label": pe.label, "path": pe.path,
+        "changes": changes,
+    })
+    flash(f"Saved changes to {pe.label or pe.path}.", "success")
+    return redirect(url_for("admin.paths_view"))
+
+
+@bp.route("/paths/new", methods=["POST"])
+@admin_required
+def paths_new():
+    """Create a new expected path *without* needing a scan first.
+
+    The path's 'path' field will hold the admin's free-text identifier
+    (e.g. 'Sage_Owner_full_backup'). When a scan is later run against a
+    folder of the same name, it'll just create another PathEntry — that
+    isn't a problem because Vigil already groups by path string in the
+    rollup. The expected entry exists primarily to surface the path as
+    overdue if no scan ever arrives.
+    """
+    label = (request.form.get("label") or "").strip()
+    cadence = (request.form.get("expected_cadence") or "weekly").strip()
+    notes = (request.form.get("notes") or "").strip() or None
+    path_str = (request.form.get("path") or "").strip()
+
+    if not label:
+        flash("Label is required.", "danger")
+        return redirect(url_for("admin.paths_view"))
+    if cadence not in _VALID_CADENCES:
+        flash(f"Cadence must be one of: {', '.join(_VALID_CADENCES)}.", "danger")
+        return redirect(url_for("admin.paths_view"))
+    if not path_str:
+        # Default to a slug derived from the label so the path field stays
+        # populated; admins can scan over this later
+        path_str = "".join(c if c.isalnum() else "_" for c in label.lower()).strip("_")[:64] or "expected"
+
+    pe = PathEntry(
+        path=path_str, label=label,
+        is_expected=True, expected_cadence=cadence, notes=notes,
+        entered_by=g.user.id,
+    )
+    db.session.add(pe)
+    db.session.commit()
+    audit.record("path_new", {
+        "path_entry_id": pe.id, "label": pe.label, "path": pe.path,
+        "is_expected": True, "expected_cadence": cadence,
+    })
+    flash(f"Added expected path: {pe.label}.", "success")
+    return redirect(url_for("admin.paths_view"))
+
+
+@bp.route("/paths/<int:path_id>/delete", methods=["POST"])
+@admin_required
+def paths_delete(path_id: int):
+    """Delete a PathEntry. Refuses if scans reference it — admin must
+    hide those scans first to prevent orphaned data."""
+    pe = db.session.get(PathEntry, path_id)
+    if not pe:
+        flash("Path not found.", "danger")
+        return redirect(url_for("admin.paths_view"))
+    scan_count = db.session.scalar(
+        select(func_count(Scan.id)).where(Scan.path_entry_id == pe.id)
+    ) or 0
+    if scan_count > 0:
+        flash(
+            f"Cannot delete '{pe.label or pe.path}': {scan_count} scan"
+            f"{'s' if scan_count != 1 else ''} reference it. "
+            f"Hide those scans first or just unmark 'expected'.",
+            "danger",
+        )
+        return redirect(url_for("admin.paths_view"))
+    label = pe.label or pe.path
+    db.session.delete(pe)
+    db.session.commit()
+    audit.record("path_delete", {
+        "label": label, "path": pe.path, "path_entry_id": path_id,
+    })
+    flash(f"Deleted path: {label}.", "success")
+    return redirect(url_for("admin.paths_view"))
