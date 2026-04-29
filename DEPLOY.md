@@ -18,7 +18,7 @@ This walkthrough assumes you have a Railway account and a GitHub repo containing
 2. Once provisioned, click the new Postgres service → **Variables** tab → confirm `DATABASE_URL` is exported
 3. Go back to the Vigil web service → **Variables** tab → click **Add Reference** → pick the Postgres service's `DATABASE_URL`. Railway will inject it into the web service automatically.
 
-The `release` step in `Procfile` (and the start command in `railway.json`) runs `flask --app app db upgrade` before booting gunicorn, so migrations apply automatically on every deploy.
+The `startCommand` in `railway.json` runs `flask --app app db upgrade` before booting gunicorn on every container start, so migrations apply automatically on every deploy. (Migrations are kept out of the build phase because Railway's internal DNS — `postgres.railway.internal` — is only reachable at runtime, not during builds.)
 
 ---
 
