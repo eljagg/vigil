@@ -91,5 +91,6 @@ def scan_submit():
     return jsonify(
         ok=True,
         scan_id=scan.id,
+        path_entry_id=pe.id,
         redirect=f"/scan/{scan.id}",
     )

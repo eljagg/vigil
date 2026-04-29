@@ -156,6 +156,7 @@ def ingest_scan(path_entry: PathEntry, files: list[IncomingFile],
 
     file_count = total_bytes = encrypted_count = plain_count = 0
     new_count = grew = shrunk = 0
+    new_bytes = grew_bytes = shrunk_bytes = 0
 
     for f in files:
         file_count += 1
@@ -172,10 +173,13 @@ def ingest_scan(path_entry: PathEntry, files: list[IncomingFile],
             delta = f.size_bytes - prev_size
             if delta > 0:
                 grew += 1
+                grew_bytes += delta
             elif delta < 0:
                 shrunk += 1
+                shrunk_bytes += -delta  # store as positive magnitude
         else:
             new_count += 1
+            new_bytes += f.size_bytes
 
         db.session.add(FileSnapshot(
             scan_id=scan.id,
@@ -198,6 +202,9 @@ def ingest_scan(path_entry: PathEntry, files: list[IncomingFile],
     scan.new_file_count = new_count
     scan.grew_count = grew
     scan.shrunk_count = shrunk
+    scan.new_bytes = new_bytes
+    scan.grew_bytes = grew_bytes
+    scan.shrunk_bytes = shrunk_bytes
 
     db.session.commit()
     return scan

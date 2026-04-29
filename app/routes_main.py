@@ -250,6 +250,8 @@ def dashboard():
         "file_count": s.file_count, "total_bytes": s.total_bytes,
         "new_file_count": s.new_file_count, "grew_count": s.grew_count,
         "shrunk_count": s.shrunk_count,
+        "new_bytes": s.new_bytes, "grew_bytes": s.grew_bytes,
+        "shrunk_bytes": s.shrunk_bytes,
         "workstation": s.workstation,
         "path": p.path, "label": p.label,
         "operator_username": u.username, "operator_full_name": u.full_name,
@@ -285,6 +287,9 @@ def dashboard():
             "new_file_count": last.new_file_count if last else 0,
             "grew_count": last.grew_count if last else 0,
             "shrunk_count": last.shrunk_count if last else 0,
+            "new_bytes":    last.new_bytes    if last else 0,
+            "grew_bytes":   last.grew_bytes   if last else 0,
+            "shrunk_bytes": last.shrunk_bytes if last else 0,
         })
 
     on_duty = rotation.current_assignment()
@@ -323,7 +328,7 @@ def scan_new():
 
     # Rescan pre-fill: if ?from_scan=N is given, pull label + workstation from that scan.
     prefill = {"label": "", "workstation": "", "path_hint": "",
-               "from_scan_id": None, "notes": ""}
+               "from_scan_id": None, "notes": "", "path_entry_id": None}
     from_scan = request.args.get("from_scan", type=int)
     if from_scan:
         prior = db.session.get(Scan, from_scan)
@@ -333,6 +338,7 @@ def scan_new():
                 prefill["label"] = prior_pe.label or ""
                 prefill["path_hint"] = prior_pe.path or ""
                 prefill["notes"] = prior_pe.notes or ""
+                prefill["path_entry_id"] = prior_pe.id
             prefill["workstation"] = prior.workstation or ""
             prefill["from_scan_id"] = prior.id
 
@@ -475,6 +481,8 @@ def scan_list():
         "file_count": s.file_count, "total_bytes": s.total_bytes,
         "new_file_count": s.new_file_count, "grew_count": s.grew_count,
         "shrunk_count": s.shrunk_count,
+        "new_bytes": s.new_bytes, "grew_bytes": s.grew_bytes,
+        "shrunk_bytes": s.shrunk_bytes,
         "is_hidden": s.is_hidden,
         "workstation": s.workstation,
         "path": p.path, "label": p.label,

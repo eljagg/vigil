@@ -42,8 +42,163 @@
     return;
   }
 
+  // ===== v2.0.7: persisted FileSystemDirectoryHandle (Option A) =====
+  // We store the handle keyed by path_entry_id so a rescan of the same
+  // path can reuse it. Chrome will still ask permission once per session,
+  // but the file picker is skipped — operator just clicks Allow.
+  //
+  // IndexedDB schema: db 'vigil' v1, store 'handles' keyed by path_entry_id.
+  const HANDLE_DB = 'vigil';
+  const HANDLE_STORE = 'handles';
+
+  function openHandleDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(HANDLE_DB, 1);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore(HANDLE_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function saveHandle(pathEntryId, handle) {
+    if (!pathEntryId || !handle) return;
+    try {
+      const db = await openHandleDB();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(HANDLE_STORE, 'readwrite');
+        tx.objectStore(HANDLE_STORE).put(handle, String(pathEntryId));
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    } catch (e) {
+      console.warn('vigil: failed to save handle', e);
+    }
+  }
+  async function loadHandle(pathEntryId) {
+    if (!pathEntryId) return null;
+    try {
+      const db = await openHandleDB();
+      const handle = await new Promise((resolve, reject) => {
+        const tx = db.transaction(HANDLE_STORE, 'readonly');
+        const req = tx.objectStore(HANDLE_STORE).get(String(pathEntryId));
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+      db.close();
+      return handle;
+    } catch (e) {
+      console.warn('vigil: failed to load handle', e);
+      return null;
+    }
+  }
+  async function deleteHandle(pathEntryId) {
+    if (!pathEntryId) return;
+    try {
+      const db = await openHandleDB();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(HANDLE_STORE, 'readwrite');
+        tx.objectStore(HANDLE_STORE).delete(String(pathEntryId));
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    } catch (e) { /* swallow */ }
+  }
+  async function ensureReadPermission(handle) {
+    // Chrome requires re-authorization per session even if the handle is saved.
+    // queryPermission tells us whether we already have it; requestPermission
+    // shows the small "Allow this site to view files in X?" dialog (NOT the
+    // full file picker).
+    try {
+      const opts = { mode: 'read' };
+      if ((await handle.queryPermission(opts)) === 'granted') return true;
+      const result = await handle.requestPermission(opts);
+      return result === 'granted';
+    } catch (e) {
+      console.warn('vigil: permission check failed', e);
+      return false;
+    }
+  }
+
   let pickedHandle = null;
   let pickedName = '';
+
+  // Read the rescan context from the scanner-card's data attributes
+  const scannerCard = document.querySelector('.scanner-card');
+  const pathEntryId = scannerCard ? scannerCard.dataset.pathEntryId : null;
+  const isRescan    = scannerCard ? scannerCard.dataset.fromScan === '1' : false;
+
+  // Saved-handle UI elements (only present on rescan pages)
+  const savedHandleBlock = document.getElementById('saved-handle-block');
+  const savedHandleName  = document.getElementById('saved-handle-name');
+  const savedHandleName2 = document.getElementById('saved-handle-name-2');
+  const reuseHandleBtn   = document.getElementById('reuse-handle-btn');
+  const pickDifferentBtn = document.getElementById('pick-different-btn');
+
+  // On rescan page load, check if we have a saved handle for this path
+  if (isRescan && pathEntryId && savedHandleBlock) {
+    (async () => {
+      const handle = await loadHandle(pathEntryId);
+      if (!handle) return; // no saved handle — leave Browse-only flow visible
+      // Show the quick-reuse block
+      if (savedHandleName)  savedHandleName.textContent  = handle.name;
+      if (savedHandleName2) savedHandleName2.textContent = handle.name;
+      savedHandleBlock.style.display = 'block';
+      // Hide Browse and rename it for "different folder" path below
+      if (browseBtn) browseBtn.style.display = 'none';
+    })();
+  }
+
+  // "Use saved folder" button
+  if (reuseHandleBtn) {
+    reuseHandleBtn.addEventListener('click', async () => {
+      const handle = await loadHandle(pathEntryId);
+      if (!handle) {
+        alert('Saved folder is no longer available. Please pick the folder again.');
+        if (savedHandleBlock) savedHandleBlock.style.display = 'none';
+        if (browseBtn) browseBtn.style.display = '';
+        return;
+      }
+      const ok = await ensureReadPermission(handle);
+      if (!ok) {
+        alert('Permission was not granted. Click "Use saved folder" again, or "Pick a different folder".');
+        return;
+      }
+      // Confirm the handle still resolves (folder might have been moved/deleted)
+      try {
+        // Touch the handle by listing one entry — throws NotFoundError if gone
+        const it = handle.values()[Symbol.asyncIterator]();
+        await it.next();
+      } catch (e) {
+        if (e && e.name === 'NotFoundError') {
+          alert('The saved folder no longer exists. Please pick the folder again.');
+          await deleteHandle(pathEntryId);
+          if (savedHandleBlock) savedHandleBlock.style.display = 'none';
+          if (browseBtn) browseBtn.style.display = '';
+          return;
+        }
+        // Other errors — fall through (might be empty folder which is fine)
+      }
+      pickedHandle = handle;
+      pickedName = handle.name;
+      pickedBox.textContent = pickedName + ' (saved)';
+      pickedBox.style.display = 'block';
+      runBtn.disabled = false;
+    });
+  }
+
+  // "Pick a different folder" — falls back to fresh Browse
+  if (pickDifferentBtn) {
+    pickDifferentBtn.addEventListener('click', () => {
+      if (savedHandleBlock) savedHandleBlock.style.display = 'none';
+      if (browseBtn) {
+        browseBtn.style.display = '';
+        browseBtn.click();
+      }
+    });
+  }
 
   browseBtn.addEventListener('click', async () => {
     try {
@@ -129,6 +284,12 @@
 
     const data = await resp.json();
     setProgress(100, files.length, sumBytes(files), 'Done');
+
+    // v2.0.7: persist the directory handle keyed by path_entry_id so the
+    // next rescan can reuse it without showing the file picker again.
+    if (data && data.path_entry_id && pickedHandle) {
+      await saveHandle(data.path_entry_id, pickedHandle);
+    }
 
     if (data && data.redirect) {
       window.location.href = data.redirect;

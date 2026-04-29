@@ -72,7 +72,9 @@
   </p>
 </section>
 
-<section class="scanner-card">
+<section class="scanner-card"
+         {% if prefill.path_entry_id %}data-path-entry-id="{{ prefill.path_entry_id }}"{% endif %}
+         {% if prefill.from_scan_id %}data-from-scan="1"{% endif %}>
   <div class="scanner-step">
     <h3>1 · Pick the backup folder</h3>
     <p class="muted small">
@@ -82,6 +84,26 @@
         Click <em>Browse</em> and choose the folder where the backup files live (typically a mapped drive — <code>Z:\Backup Logs\Archive</code> on Windows or <code>/mnt/backup/archive</code> on Linux).
       {% endif %}
     </p>
+
+    {# Saved-handle quick-reuse UI — only shown for rescans, hidden by JS if no handle is saved #}
+    {% if prefill.from_scan_id %}
+    <div id="saved-handle-block" class="saved-handle-block" style="display: none;">
+      <div class="saved-handle-info">
+        <strong>📁 Saved folder available</strong>
+        <span class="muted small">Last picked: <code id="saved-handle-name">…</code></span>
+      </div>
+      <button type="button" class="btn btn-primary" id="reuse-handle-btn">
+        Use saved folder
+      </button>
+      <button type="button" class="link" id="pick-different-btn">
+        Pick a different folder
+      </button>
+      <p class="muted small" style="margin-top: 0.5rem; margin-bottom: 0;">
+        Chrome will ask "Allow this site to view files in <code id="saved-handle-name-2">…</code>?" — that's expected. Click <strong>Allow</strong>.
+      </p>
+    </div>
+    {% endif %}
+
     <button type="button" class="btn btn-primary" id="browse-btn">Browse…</button>
     <div class="picked-folder" id="picked-folder" style="display: none; margin-top: 0.7rem;"></div>
   </div>

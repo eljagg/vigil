@@ -314,6 +314,22 @@ code, .mono {
 }
 .card-label  { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; }
 .card-number { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 0.2rem; line-height: 1.1; }
+/* v2.0.7: saved-handle quick-reuse block on /scan/new rescan */
+.saved-handle-block {
+  background: color-mix(in srgb, var(--info-bg) 60%, var(--surface));
+  border: 1px solid var(--info-border);
+  border-left: 4px solid var(--accent-info);
+  border-radius: var(--radius);
+  padding: 0.95rem 1.15rem;
+  margin-bottom: 1rem;
+}
+.saved-handle-info {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.saved-handle-info strong { color: var(--info-text); }
+
+.card-sub    { margin-top: 0.15rem; font-variant-numeric: tabular-nums; }
 .card-info    { border-left-color: var(--accent-info); }
 .card-success { border-left-color: var(--accent-success); }
 .card-warn,

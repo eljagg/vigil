@@ -102,6 +102,13 @@ class Scan(db.Model):
     new_file_count:     Mapped[Optional[int]] = mapped_column(Integer)
     grew_count:         Mapped[Optional[int]] = mapped_column(Integer)
     shrunk_count:       Mapped[Optional[int]] = mapped_column(Integer)
+    # v2.0.7: cumulative byte magnitudes per category (always non-negative).
+    # new_bytes    = sum of size_bytes across files where is_new
+    # grew_bytes   = sum of (size_bytes - prev_size_bytes) where size_delta_bytes > 0
+    # shrunk_bytes = sum of (prev_size_bytes - size_bytes) where size_delta_bytes < 0
+    new_bytes:          Mapped[Optional[int]] = mapped_column(BigInteger)
+    grew_bytes:         Mapped[Optional[int]] = mapped_column(BigInteger)
+    shrunk_bytes:       Mapped[Optional[int]] = mapped_column(BigInteger)
     error_message:      Mapped[Optional[str]] = mapped_column(Text)
     is_hidden:          Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     workstation:        Mapped[Optional[str]] = mapped_column(String(120))

@@ -54,9 +54,12 @@ def export_csv(scan_id: int) -> bytes:
     w.writerow(["Total bytes", scan.total_bytes or 0])
     w.writerow(["Encrypted-named", scan.encrypted_count or 0])
     w.writerow(["Plain-named", scan.plain_count or 0])
-    w.writerow(["New files", scan.new_file_count or 0])
-    w.writerow(["Grew", scan.grew_count or 0])
-    w.writerow(["Shrunk", scan.shrunk_count or 0])
+    w.writerow(["New files", scan.new_file_count or 0,
+                f"{format_bytes(scan.new_bytes)}" if scan.new_bytes else ""])
+    w.writerow(["Grew", scan.grew_count or 0,
+                f"+{format_bytes(scan.grew_bytes)}" if scan.grew_bytes else ""])
+    w.writerow(["Shrunk", scan.shrunk_count or 0,
+                f"-{format_bytes(scan.shrunk_bytes)}" if scan.shrunk_bytes else ""])
     w.writerow([])
     w.writerow([
         "Filename", "Relative path", "Size (bytes)", "Size (human)",
@@ -117,8 +120,9 @@ def export_pdf(scan_id: int, company_name: str = "",
         ["Total size", format_bytes(scan.total_bytes or 0)],
         ["Encrypted-named", str(scan.encrypted_count or 0)],
         ["Plain-named", str(scan.plain_count or 0)],
-        ["New files", str(scan.new_file_count or 0)],
-        ["Grew / shrunk", f"{scan.grew_count or 0} / {scan.shrunk_count or 0}"],
+        ["New files", f"{scan.new_file_count or 0}" + (f" ({format_bytes(scan.new_bytes)})" if scan.new_bytes else "")],
+        ["Grew",   f"{scan.grew_count or 0}"   + (f" (+{format_bytes(scan.grew_bytes)})"   if scan.grew_bytes   else "")],
+        ["Shrunk", f"{scan.shrunk_count or 0}" + (f" (−{format_bytes(scan.shrunk_bytes)})" if scan.shrunk_bytes else "")],
     ]
     mt = Table(meta, colWidths=[1.6 * inch, 5 * inch])
     mt.setStyle(TableStyle([

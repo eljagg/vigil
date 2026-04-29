@@ -79,14 +79,17 @@
   <div class="card card-amber">
     <div class="card-label">New files</div>
     <div class="card-number">{{ scan.new_file_count or 0 }}</div>
+    {% if scan.new_file_count %}<div class="card-sub muted small">{{ format_bytes(scan.new_bytes) }}</div>{% endif %}
   </div>
   <div class="card card-success">
     <div class="card-label">Grew</div>
     <div class="card-number">{{ scan.grew_count or 0 }}</div>
+    {% if scan.grew_count %}<div class="card-sub muted small">+{{ format_bytes(scan.grew_bytes) }}</div>{% endif %}
   </div>
   <div class="card card-danger">
     <div class="card-label">Shrunk</div>
     <div class="card-number">{{ scan.shrunk_count or 0 }}</div>
+    {% if scan.shrunk_count %}<div class="card-sub muted small">−{{ format_bytes(scan.shrunk_bytes) }}</div>{% endif %}
   </div>
 </section>
 

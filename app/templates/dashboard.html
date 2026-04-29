@@ -265,7 +265,7 @@
         <th>Label / Path</th>
         <th>Workstation</th>
         <th>Last scan</th>
-        <th class="num">Files</th>
+        <th class="num">Total files</th>
         <th class="num">Total size</th>
         <th class="num">New</th>
         <th class="num">Grew</th>
@@ -292,9 +292,24 @@
         <td>{{ r.last_started.strftime('%Y-%m-%d %H:%M') if r.last_started else '—' }}</td>
         <td class="num">{{ r.file_count or '—' }}</td>
         <td class="num">{{ format_bytes(r.total_bytes) if r.total_bytes is not none else '—' }}</td>
-        <td class="num">{% if r.new_file_count %}<span class="pill pill-amber">{{ r.new_file_count }}</span>{% else %}—{% endif %}</td>
-        <td class="num">{% if r.grew_count %}<span class="pill pill-green">{{ r.grew_count }}</span>{% else %}—{% endif %}</td>
-        <td class="num">{% if r.shrunk_count %}<span class="pill pill-red">{{ r.shrunk_count }}</span>{% else %}—{% endif %}</td>
+        <td class="num">
+          {% if r.new_file_count %}
+            <span class="pill pill-amber">{{ r.new_file_count }}</span>
+            <div class="muted small mono">{{ format_bytes(r.new_bytes) }}</div>
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {% if r.grew_count %}
+            <span class="pill pill-green">{{ r.grew_count }}</span>
+            <div class="muted small mono">+{{ format_bytes(r.grew_bytes) }}</div>
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {% if r.shrunk_count %}
+            <span class="pill pill-red">{{ r.shrunk_count }}</span>
+            <div class="muted small mono">−{{ format_bytes(r.shrunk_bytes) }}</div>
+          {% else %}—{% endif %}
+        </td>
         <td>
           {% if r.last_status == 'completed' %}<span class="status status-ok">Completed</span>
           {% elif r.last_status == 'failed' %}<span class="status status-fail">Failed</span>
@@ -377,7 +392,9 @@
   <table class="grid" id="recent-scans-table">
     <thead>
       <tr><th>When</th><th>Path</th><th>Operator</th><th>Workstation</th>
-          <th class="num">Files</th><th class="num">Size</th><th>Status</th>
+          <th class="num">Total files</th><th class="num">Total size</th>
+          <th class="num">New</th><th class="num">Grew</th><th class="num">Shrunk</th>
+          <th>Status</th>
           <th>Actions</th>
       </tr>
     </thead>
@@ -390,6 +407,24 @@
         <td class="muted small">{{ s.workstation or '—' }}</td>
         <td class="num">{{ s.file_count or '—' }}</td>
         <td class="num">{{ format_bytes(s.total_bytes) if s.total_bytes is not none else '—' }}</td>
+        <td class="num">
+          {% if s.new_file_count %}
+            <span class="pill pill-amber">{{ s.new_file_count }}</span>
+            <div class="muted small mono">{{ format_bytes(s.new_bytes) }}</div>
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {% if s.grew_count %}
+            <span class="pill pill-green">{{ s.grew_count }}</span>
+            <div class="muted small mono">+{{ format_bytes(s.grew_bytes) }}</div>
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {% if s.shrunk_count %}
+            <span class="pill pill-red">{{ s.shrunk_count }}</span>
+            <div class="muted small mono">−{{ format_bytes(s.shrunk_bytes) }}</div>
+          {% else %}—{% endif %}
+        </td>
         <td>
           {% if s.status == 'completed' %}<span class="status status-ok">Completed</span>
           {% elif s.status == 'failed' %}<span class="status status-fail">Failed</span>
