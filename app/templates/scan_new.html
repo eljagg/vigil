@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}New scan{% endblock %}
+{% block head_extra %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+{% endblock %}
+
+{% block content %}
+<h1>Run a new backup integrity scan</h1>
+<p class="muted">Vigil reads file metadata only — names, sizes, modification times. File contents never leave your workstation.</p>
+
+{% if on_duty and current_user and on_duty.id != current_user.id %}
+<section class="alert-box alert-warn">
+  <div class="alert-head">
+    <span class="alert-icon">i</span>
+    <strong>This week is assigned to {{ on_duty.full_name }}</strong>
+  </div>
+  <p class="muted small">You can still run a scan — it'll be recorded under your name and flagged as cover.</p>
+</section>
+{% endif %}
+
+<div class="compat-warn" id="compat-warn">
+  <strong>Browser not supported.</strong>
+  Vigil's folder picker requires the File System Access API, available in
+  <strong>Chrome</strong>, <strong>Edge</strong>, <strong>Brave</strong>, or <strong>Opera</strong> on a desktop computer.
+  Firefox, Safari, and mobile browsers can view scan results but cannot start a new scan.
+</div>
+
+<section class="scanner-card">
+  <div class="scanner-step">
+    <h3>1 · Pick the backup folder</h3>
+    <p class="muted small">Click <em>Browse</em> and choose the folder where the backup files live (typically your mapped drive — <code>Z:\Backup Logs\Archive</code> or similar).</p>
+    <button type="button" class="btn btn-primary" id="browse-btn">Browse…</button>
+    <div class="picked-folder" id="picked-folder" style="display: none; margin-top: 0.7rem;"></div>
+  </div>
+
+  <div class="scanner-step">
+    <h3>2 · Label this scan <span class="muted small">(optional)</span></h3>
+    <p class="muted small">A short note so you can find it later, e.g. "Mars · daily archive" or "Q2 month-end".</p>
+    <input type="text" id="label-input" maxlength="160" placeholder="Label (optional)" style="padding: 0.55rem 0.7rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); width: 100%; max-width: 480px; font-family: inherit; font-size: 14px;">
+  </div>
+
+  <div class="scanner-step">
+    <h3>3 · Run the scan</h3>
+    <p class="muted small">Vigil walks the folder, builds the manifest in your browser, and submits it for diff against the previous scan of this folder.</p>
+    <button type="button" class="btn btn-primary" id="run-btn" disabled>Run scan</button>
+  </div>
+
+  <div class="progress-card" id="progress-card">
+    <div id="progress-stage" class="muted small" style="margin-bottom: 0.3rem;">Working…</div>
+    <div class="progress-bar"><div class="progress-bar-fill" id="progress-bar" style="width: 0%"></div></div>
+    <div class="progress-stats">
+      <span id="progress-files">0 files</span>
+      <span id="progress-bytes">0 B</span>
+    </div>
+  </div>
+</section>
+
+{% if recent_paths %}
+<section>
+  <h2>Recent paths</h2>
+  <p class="muted small">Folders previously scanned. Picking the same folder again continues the diff history.</p>
+  <div class="grid-wrap">
+    <table class="grid grid-tight">
+      <thead><tr><th>Path</th><th>Label</th><th>Last entered</th></tr></thead>
+      <tbody>
+        {% for r in recent_paths %}
+        <tr>
+          <td class="mono">{{ r.path }}</td>
+          <td>{{ r.label or '—' }}</td>
+          <td>{{ r.last_entered.strftime('%Y-%m-%d %H:%M') if r.last_entered else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/scanner.js') }}" defer></script>
+{% endblock %}

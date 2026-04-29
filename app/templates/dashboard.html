@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<section class="duty-banner {% if on_duty and current_user and on_duty.id == current_user.id %}duty-mine{% endif %}">
+  <div>
+    <div class="duty-label">On duty this week</div>
+    <div class="duty-name">
+      {% if on_duty %}
+        {{ on_duty.full_name }} <span class="muted">({{ on_duty.username }})</span>
+        <span class="duty-week">{{ on_duty.week_start }} → {{ on_duty.week_end }}</span>
+      {% else %}
+        <span class="muted">No assignment for this week. Admin must set rotation.</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if on_duty and current_user and on_duty.id == current_user.id %}
+    <div class="duty-tag">It's your turn — please run today's check.</div>
+  {% endif %}
+</section>
+
+{% if missed_weeks %}
+<section class="alert-box alert-danger">
+  <div class="alert-head">
+    <span class="alert-icon">!</span>
+    <strong>{{ missed_weeks|length }} past week{{ 's' if missed_weeks|length != 1 else '' }} with no recorded scans</strong>
+  </div>
+  <p>The following completed week{{ 's' if missed_weeks|length != 1 else '' }} closed without any backup integrity check being run.</p>
+  <div class="grid-wrap">
+    <table class="grid grid-tight">
+      <thead><tr><th>Week</th><th>Was assigned to</th><th class="num">Scans</th></tr></thead>
+      <tbody>
+        {% for w in missed_weeks %}
+        <tr>
+          <td>{{ w.week_start }} → {{ w.week_end }}</td>
+          <td>{{ w.assigned_full_name }} <span class="muted">({{ w.assigned_username }})</span></td>
+          <td class="num"><span class="pill pill-red">0</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if partial_weeks %}
+<section class="alert-box alert-warn">
+  <div class="alert-head">
+    <span class="alert-icon">⚠</span>
+    <strong>{{ partial_weeks|length }} past week{{ 's' if partial_weeks|length != 1 else '' }} covered by someone other than the assigned operator</strong>
+  </div>
+  <p class="muted small">Scans happened, but not by the person on rotation. Worth confirming the cover was intentional.</p>
+  <div class="grid-wrap">
+    <table class="grid grid-tight">
+      <thead><tr><th>Week</th><th>Assigned to</th><th class="num">Total</th><th class="num">By assigned</th></tr></thead>
+      <tbody>
+        {% for w in partial_weeks %}
+        <tr>
+          <td>{{ w.week_start }} → {{ w.week_end }}</td>
+          <td>{{ w.assigned_full_name }}</td>
+          <td class="num">{{ w.scan_count }}</td>
+          <td class="num"><span class="pill pill-amber">{{ w.scans_by_assigned }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="coverage-panel">
+  <div class="coverage-headline">
+    This week:
+    <strong>{{ current_coverage.scanned }}</strong> of
+    <strong>{{ current_coverage.total }}</strong> path{{ 's' if current_coverage.total != 1 else '' }} scanned
+  </div>
+  <div class="coverage-bar">
+    {% set pct = (current_coverage.scanned * 100 // current_coverage.total) if current_coverage.total else 0 %}
+    <div class="coverage-bar-fill {% if pct == 100 %}bar-ok{% elif pct >= 50 %}bar-warn{% else %}bar-low{% endif %}" style="width: {{ pct }}%"></div>
+  </div>
+  <div class="muted small">{{ current_coverage.week_start }} → {{ current_coverage.week_end }}</div>
+  {% if current_coverage.uncovered_paths %}
+  <details class="coverage-details">
+    <summary>{{ current_coverage.uncovered_paths|length }} path{{ 's' if current_coverage.uncovered_paths|length != 1 else '' }} not yet scanned this week</summary>
+    <ul class="path-list">
+      {% for p in current_coverage.uncovered_paths %}
+        <li class="mono">{{ p.label or p.path }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</section>
+
+<section class="card-row">
+  <div class="card card-info">
+    <div class="card-label">Active path entries</div>
+    <div class="card-number">{{ totals.path_entries }}</div>
+  </div>
+  <div class="card card-success">
+    <div class="card-label">Scans completed</div>
+    <div class="card-number">{{ totals.scans_total }}</div>
+  </div>
+  <div class="card card-amber">
+    <div class="card-label">Scans today</div>
+    <div class="card-number">{{ totals.scans_today }}</div>
+  </div>
+  <div class="card card-purple">
+    <div class="card-label">Active users</div>
+    <div class="card-number">{{ totals.active_users }}</div>
+  </div>
+</section>
+
+<section class="actions">
+  <a href="{{ url_for('main.scan_new') }}" class="btn btn-primary">Run new scan</a>
+  <a href="{{ url_for('main.scan_list') }}" class="btn btn-ghost">View scan history</a>
+</section>
+
+<section>
+  <h2>Path roll-up</h2>
+  <p class="muted">Each row is a folder that has been scanned. Status reflects the most recent scan.</p>
+  {% if per_path %}
+  <div class="grid-wrap">
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>Path</th>
+        <th>Entered by</th>
+        <th>Last scan</th>
+        <th class="num">Files</th>
+        <th class="num">Total size</th>
+        <th class="num">New</th>
+        <th class="num">Grew</th>
+        <th class="num">Shrunk</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in per_path %}
+      <tr>
+        <td class="mono">
+          {{ r.label or r.path }}
+          {% if r.label %}<div class="muted small">{{ r.path }}</div>{% endif %}
+        </td>
+        <td>{{ r.entered_by_username or '—' }}</td>
+        <td>{{ r.last_started.strftime('%Y-%m-%d %H:%M') if r.last_started else '—' }}</td>
+        <td class="num">{{ r.file_count or '—' }}</td>
+        <td class="num">{{ format_bytes(r.total_bytes) if r.total_bytes is not none else '—' }}</td>
+        <td class="num">{% if r.new_file_count %}<span class="pill pill-amber">{{ r.new_file_count }}</span>{% else %}—{% endif %}</td>
+        <td class="num">{% if r.grew_count %}<span class="pill pill-green">{{ r.grew_count }}</span>{% else %}—{% endif %}</td>
+        <td class="num">{% if r.shrunk_count %}<span class="pill pill-red">{{ r.shrunk_count }}</span>{% else %}—{% endif %}</td>
+        <td>
+          {% if r.last_status == 'completed' %}<span class="status status-ok">Completed</span>
+          {% elif r.last_status == 'failed' %}<span class="status status-fail">Failed</span>
+          {% elif r.last_status == 'running' %}<span class="status status-warn">Running</span>
+          {% else %}<span class="status status-idle">Never scanned</span>{% endif %}
+        </td>
+        <td>
+          {% if r.last_scan_id %}
+            <a href="{{ url_for('main.scan_view', scan_id=r.last_scan_id) }}">View</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No path entries yet. <a href="{{ url_for('main.scan_new') }}">Run your first scan.</a></p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Upcoming rotation</h2>
+  {% if upcoming %}
+  <div class="grid-wrap">
+  <table class="grid grid-tight">
+    <thead><tr><th>Week</th><th>Assigned</th></tr></thead>
+    <tbody>
+      {% for a in upcoming %}
+      <tr>
+        <td>{{ a.week_start }} → {{ a.week_end }}</td>
+        <td>{{ a.full_name }} <span class="muted">({{ a.username }})</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No upcoming rotation set.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Recent scans</h2>
+  {% if recent %}
+  <div class="grid-wrap">
+  <table class="grid">
+    <thead>
+      <tr><th>When</th><th>Path</th><th>Operator</th><th class="num">Files</th><th class="num">Size</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for s in recent %}
+      <tr>
+        <td><a href="{{ url_for('main.scan_view', scan_id=s.id) }}">{{ s.started_at.strftime('%Y-%m-%d %H:%M') }}</a></td>
+        <td class="mono">{{ s.label or s.path }}</td>
+        <td>{{ s.operator_full_name }} <span class="muted">({{ s.operator_username }})</span></td>
+        <td class="num">{{ s.file_count or '—' }}</td>
+        <td class="num">{{ format_bytes(s.total_bytes) if s.total_bytes is not none else '—' }}</td>
+        <td>
+          {% if s.status == 'completed' %}<span class="status status-ok">Completed</span>
+          {% elif s.status == 'failed' %}<span class="status status-fail">Failed</span>
+          {% else %}<span class="status status-warn">{{ s.status }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No scans recorded yet.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

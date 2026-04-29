@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+<h1>Your profile</h1>
+
+<section class="form-card">
+  <h2>Account</h2>
+  <p class="muted small">{{ user.full_name }} · {{ user.username }} ·
+    <span class="user-role role-{{ user.role }}">{{ user.role }}</span> ·
+    auth: {{ user.auth_source }}</p>
+</section>
+
+<section class="form-card">
+  <h2>Theme</h2>
+  <form method="post" action="{{ url_for('auth.profile') }}" class="form form-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="set_theme">
+    <label>Preference
+      <select name="theme">
+        <option value="system" {% if user.theme == 'system' %}selected{% endif %}>System (auto)</option>
+        <option value="light"  {% if user.theme == 'light'  %}selected{% endif %}>Light</option>
+        <option value="dark"   {% if user.theme == 'dark'   %}selected{% endif %}>Dark</option>
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary">Save</button>
+  </form>
+  <p class="muted small">You can also click the moon/sun icon in the top bar — it remembers your choice across sessions.</p>
+</section>
+
+{% if user.auth_source == 'local' %}
+<section class="form-card">
+  <h2>Change password</h2>
+  <form method="post" action="{{ url_for('auth.profile') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="change_password">
+    <label>Current password
+      <input type="password" name="current_password" autocomplete="current-password" required>
+    </label>
+    <label>New password (min 12 chars)
+      <input type="password" name="new_password" autocomplete="new-password" required minlength="12">
+    </label>
+    <label>Confirm new password
+      <input type="password" name="confirm_password" autocomplete="new-password" required minlength="12">
+    </label>
+    <button type="submit" class="btn btn-primary">Update password</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="form-card">
+  <h2>Two-factor authentication</h2>
+  {% if user.totp_enabled %}
+    <p>Two-factor authentication is <strong>enabled</strong>. You'll be asked for a 6-digit code each time you sign in.</p>
+    <form method="post" action="{{ url_for('auth.disable_2fa') }}" class="inline"
+          onsubmit="return confirm('Disable 2FA on your account?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn">Disable 2FA</button>
+    </form>
+  {% else %}
+    <p class="muted">Two-factor authentication is not enabled. Adding it is strongly recommended for any administrator account.</p>
+    <form method="post" action="{{ url_for('auth.begin_2fa') }}" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-primary">Set up 2FA</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

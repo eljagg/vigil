@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Set up 2FA{% endblock %}
+{% block content %}
+<h1>Set up two-factor authentication</h1>
+<section class="form-card">
+  <p>Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, Microsoft Authenticator, etc.). Then enter the 6-digit code it shows to confirm.</p>
+
+  <div class="qr-card">
+    <img src="{{ url_for('auth.show_2fa_qr') }}" alt="2FA QR code">
+    <div>
+      <p class="muted small">Can't scan? Enter this secret manually:</p>
+      <code class="totp-secret">{{ secret }}</code>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('auth.confirm_2fa') }}" class="form" style="margin-top: 1.2rem;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Verification code
+      <input type="text" name="code" inputmode="numeric" pattern="[0-9]*"
+             autocomplete="one-time-code" required maxlength="6" minlength="6" autofocus>
+    </label>
+    <button type="submit" class="btn btn-primary">Confirm and enable</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,39 @@
+__pycache__/
+*.pyc
+*.pyo
+.Python
+.venv/
+venv/
+env/
+
+# Local config — never commit
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artefacts
+*.egg-info/
+dist/
+build/
+instance/
+
+# Local dev DB (we use Postgres, not SQLite, but just in case)
+*.sqlite3
+*.db
+
+# Coverage / testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Migration cache (Alembic versions ARE committed, but pyc isn't)
+migrations/__pycache__/

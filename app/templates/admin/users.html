@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h1>Users</h1>
+
+<section class="form-card">
+  <h2 style="margin-top: 0;">Create user</h2>
+  <form method="post" action="{{ url_for('admin.users_new') }}" class="form form-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Username
+      <input type="text" name="username" required autocomplete="off" maxlength="64">
+    </label>
+    <label>Full name
+      <input type="text" name="full_name" required autocomplete="off" maxlength="160">
+    </label>
+    <label>Email
+      <input type="email" name="email" autocomplete="off" maxlength="160">
+    </label>
+    <label>Role
+      <select name="role">
+        <option value="operator">Operator</option>
+        <option value="admin">Administrator</option>
+      </select>
+    </label>
+    <label>Auth source
+      <select name="auth_source">
+        <option value="local">Local password</option>
+        <option value="ldap">LDAP / AD</option>
+      </select>
+    </label>
+    <label>Password <span class="muted small">(local accounts only, min 12)</span>
+      <input type="password" name="password" autocomplete="new-password" minlength="12">
+    </label>
+    <button type="submit" class="btn btn-primary">Create user</button>
+  </form>
+</section>
+
+<section>
+  <h2>All users</h2>
+  <div class="grid-wrap">
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Auth</th>
+        <th>2FA</th>
+        <th>Status</th>
+        <th>Last login</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td class="mono">{{ u.username }}</td>
+        <td>{{ u.full_name }}</td>
+        <td class="muted small">{{ u.email or '—' }}</td>
+        <td><span class="user-role role-{{ u.role }}">{{ u.role }}</span></td>
+        <td>{{ u.auth_source }}</td>
+        <td>{% if u.totp_enabled %}<span class="pill pill-green">on</span>{% else %}<span class="pill pill-amber">off</span>{% endif %}</td>
+        <td>
+          {% if u.is_active %}<span class="status status-ok">Active</span>
+          {% else %}<span class="status status-idle">Disabled</span>{% endif %}
+        </td>
+        <td class="muted small">{{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else '—' }}</td>
+        <td class="actions-cell">
+          {% if u.id != current_user.id %}
+          <form method="post" action="{{ url_for('admin.users_toggle', user_id=u.id) }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="link">{% if u.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+          </form>
+          {% endif %}
+          {% if u.auth_source == 'local' %}
+          <form method="post" action="{{ url_for('admin.users_reset_pw', user_id=u.id) }}" class="inline pw-form"
+                onsubmit="return confirm('Reset password for {{ u.username }}?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="password" name="new_password" placeholder="New password" minlength="12" required>
+            <button type="submit" class="link">Reset</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endblock %}

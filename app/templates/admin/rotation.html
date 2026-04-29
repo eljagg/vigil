@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Rotation{% endblock %}
+{% block content %}
+<h1>Weekly rotation</h1>
+<p class="muted">Each week (Monday → Sunday) is assigned to one operator. They get the dashboard reminder to run that week's check.</p>
+
+<section class="form-card">
+  <h2 style="margin-top: 0;">Auto-generate</h2>
+  <p class="muted small">Round-robin from active users (admins + operators). Existing assignments are preserved.</p>
+  <form method="post" action="{{ url_for('admin.rotation_autogen') }}" class="form form-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Weeks ahead
+      <input type="number" name="weeks" value="12" min="1" max="52" required>
+    </label>
+    <button type="submit" class="btn btn-primary">Generate</button>
+  </form>
+</section>
+
+<section class="form-card">
+  <h2 style="margin-top: 0;">Manual assignment</h2>
+  <p class="muted small">Override or set a specific week. The week's start (Monday) is computed from the date you provide.</p>
+  <form method="post" action="{{ url_for('admin.rotation_assign') }}" class="form form-row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Week start
+      <input type="date" name="week_start" value="{{ next_monday }}" required>
+    </label>
+    <label>Operator
+      <select name="user_id" required>
+        {% for op in operators %}
+        <option value="{{ op.id }}">{{ op.full_name }} ({{ op.username }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary">Assign</button>
+  </form>
+</section>
+
+<section>
+  <h2>Upcoming rotation</h2>
+  {% if upcoming %}
+  <div class="grid-wrap">
+  <table class="grid grid-tight">
+    <thead><tr><th>Week</th><th>Assigned</th></tr></thead>
+    <tbody>
+      {% for a in upcoming %}
+      <tr>
+        <td>{{ a.week_start }} → {{ a.week_end }}</td>
+        <td>{{ a.full_name }} <span class="muted">({{ a.username }})</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No upcoming rotation set.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>History</h2>
+  {% if history %}
+  <div class="grid-wrap">
+  <table class="grid grid-tight">
+    <thead><tr><th>Week</th><th>Assigned</th></tr></thead>
+    <tbody>
+      {% for a in history %}
+      <tr>
+        <td>{{ a.week_start }} → {{ a.week_end }}</td>
+        <td>{{ a.full_name }} <span class="muted">({{ a.username }})</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No rotation history yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

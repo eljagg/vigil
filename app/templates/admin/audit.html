@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<h1>Audit log</h1>
+<p class="muted">Most recent 500 events. Entries are append-only.</p>
+
+{% if entries %}
+<div class="grid-wrap">
+<table class="grid grid-tight">
+  <thead>
+    <tr>
+      <th>Timestamp</th>
+      <th>User</th>
+      <th>IP</th>
+      <th>Action</th>
+      <th>Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td class="mono small">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      <td>{{ e.username or '—' }}</td>
+      <td class="mono small">{{ e.ip_address or '—' }}</td>
+      <td><span class="action-tag">{{ e.action }}</span></td>
+      <td class="mono small">{{ e.details or '' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">No audit entries recorded yet.</p>
+{% endif %}
+{% endblock %}

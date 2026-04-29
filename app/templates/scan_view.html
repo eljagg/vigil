@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Scan {{ scan.id }}{% endblock %}
+{% block content %}
+
+<div class="scan-head">
+  <div class="scan-meta">
+    <h1 style="margin-bottom: 0.4rem;">Scan #{{ scan.id }}</h1>
+    <div><strong>Path:</strong> <span class="mono">{{ path_entry.label or path_entry.path }}</span></div>
+    {% if path_entry.label %}<div class="muted small mono">{{ path_entry.path }}</div>{% endif %}
+    <div><strong>Operator:</strong> {{ operator.full_name }} <span class="muted">({{ operator.username }})</span></div>
+    {% if scheduled and operator.id != scheduled.id %}
+      <div class="muted small">Cover for <strong>{{ scheduled.full_name }}</strong> ({{ scheduled.username }}) — on rotation this week.</div>
+    {% endif %}
+  </div>
+  <div class="scan-meta">
+    <div><strong>Started:</strong> {{ scan.started_at.strftime('%A, %B %d %Y · %H:%M') }}</div>
+    {% if scan.completed_at %}
+      <div><strong>Completed:</strong> {{ scan.completed_at.strftime('%A, %B %d %Y · %H:%M') }}</div>
+    {% endif %}
+    <div><strong>Status:</strong>
+      {% if scan.status == 'completed' %}<span class="status status-ok">Completed</span>
+      {% elif scan.status == 'failed' %}<span class="status status-fail">Failed</span>
+      {% else %}<span class="status status-warn">{{ scan.status }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="scan-actions">
+    <a href="{{ url_for('main.scan_export_csv', scan_id=scan.id) }}" class="btn">Export CSV</a>
+    <a href="{{ url_for('main.scan_export_pdf', scan_id=scan.id) }}" class="btn">Export PDF</a>
+  </div>
+</div>
+
+{% if scan.status == 'failed' and scan.error_message %}
+<section class="alert-box alert-danger">
+  <div class="alert-head"><span class="alert-icon">!</span><strong>Scan failed</strong></div>
+  <p class="mono small">{{ scan.error_message }}</p>
+</section>
+{% endif %}
+
+<section class="card-row">
+  <div class="card card-info">
+    <div class="card-label">Files</div>
+    <div class="card-number">{{ scan.file_count or 0 }}</div>
+  </div>
+  <div class="card card-info">
+    <div class="card-label">Total size</div>
+    <div class="card-number">{{ format_bytes(scan.total_bytes) }}</div>
+  </div>
+  <div class="card card-success">
+    <div class="card-label">Encrypted-named</div>
+    <div class="card-number">{{ scan.encrypted_count or 0 }}</div>
+  </div>
+  <div class="card card-{% if (scan.plain_count or 0) > 0 %}danger{% else %}success{% endif %}">
+    <div class="card-label">Plain-named</div>
+    <div class="card-number">{{ scan.plain_count or 0 }}</div>
+  </div>
+  <div class="card card-amber">
+    <div class="card-label">New files</div>
+    <div class="card-number">{{ scan.new_file_count or 0 }}</div>
+  </div>
+  <div class="card card-success">
+    <div class="card-label">Grew</div>
+    <div class="card-number">{{ scan.grew_count or 0 }}</div>
+  </div>
+  <div class="card card-danger">
+    <div class="card-label">Shrunk</div>
+    <div class="card-number">{{ scan.shrunk_count or 0 }}</div>
+  </div>
+</section>
+
+<section>
+  <h2>Report 1 — Size distribution (largest first)</h2>
+  <p class="muted small">Amber = new file (no prior scan). Green = grew vs. previous scan. Red = shrunk vs. previous scan.</p>
+  <div class="grid-wrap">
+  <table class="grid grid-tight">
+    <thead>
+      <tr>
+        <th>Filename</th>
+        <th>Path</th>
+        <th class="num">Size</th>
+        <th class="num">Previous</th>
+        <th class="num">Δ</th>
+        <th>Modified</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in by_size %}
+      <tr class="{% if f.is_new %}row-new{% elif f.size_delta_bytes is not none and f.size_delta_bytes < 0 %}row-shrunk{% elif f.size_delta_bytes is not none and f.size_delta_bytes > 0 %}row-grew{% endif %}">
+        <td class="mono">{{ f.filename }}</td>
+        <td class="mono muted small">{{ f.relative_path }}</td>
+        <td class="num">{{ format_bytes(f.size_bytes) }}</td>
+        <td class="num muted">{{ format_bytes(f.prev_size_bytes) if f.prev_size_bytes is not none else '—' }}</td>
+        <td class="num">
+          {% if f.is_new %}<span class="pill pill-amber">new</span>
+          {% else %}{{ format_delta(f.size_delta_bytes) }}{% endif %}
+        </td>
+        <td class="small">{{ f.mtime_human }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Report 2 — Encryption-name audit</h2>
+  {% if plain %}
+    <div class="alert-box alert-warn">
+      <div class="alert-head"><span class="alert-icon">⚠</span><strong>{{ plain|length }} file{{ 's' if plain|length != 1 else '' }} without <code>_encrypted</code> in the filename</strong></div>
+      <p class="muted small">Confirm with your backup operator whether these files are expected to be unencrypted, or whether the encryption step was skipped.</p>
+    </div>
+    <div class="grid-wrap">
+    <table class="grid grid-tight">
+      <thead><tr><th>Filename</th><th>Path</th><th class="num">Size</th><th>Modified</th></tr></thead>
+      <tbody>
+        {% for f in plain %}
+        <tr>
+          <td class="mono">{{ f.filename }}</td>
+          <td class="mono muted small">{{ f.relative_path }}</td>
+          <td class="num">{{ format_bytes(f.size_bytes) }}</td>
+          <td class="small">{{ f.mtime_human }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% else %}
+    <p class="muted">All {{ scan.file_count or 0 }} files have <code>_encrypted</code> in the filename. ✓</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Report 3 — Timestamp ordering</h2>
+  <p class="muted small">Files sorted oldest → newest by modification time. Day name shown to spot weekend / holiday gaps.</p>
+  <div class="grid-wrap">
+  <table class="grid grid-tight">
+    <thead>
+      <tr>
+        <th>Day</th>
+        <th>Modified</th>
+        <th>Filename</th>
+        <th class="num">Size</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in by_mtime %}
+      <tr>
+        <td><span class="pill pill-info">{{ f.mtime_day[:3] }}</span></td>
+        <td class="small">{{ f.mtime_human }}</td>
+        <td class="mono">{{ f.filename }}</td>
+        <td class="num">{{ format_bytes(f.size_bytes) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+{% endblock %}
