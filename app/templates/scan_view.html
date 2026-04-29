@@ -39,6 +39,16 @@
 </section>
 {% endif %}
 
+{# First-scan banner: detect by inspecting whether any file has prior-size data #}
+{% set has_prior_data = by_size | selectattr('prev_size_bytes', 'ne', none) | list %}
+{% if not has_prior_data and scan.status == 'completed' and (scan.file_count or 0) > 0 %}
+<section class="banner-info">
+  <strong>First scan of this folder.</strong>
+  Vigil tracks size deltas by comparing each scan against the previous scan of the same folder.
+  Run the same folder again — Vigil will then show <strong>previous size</strong> and the <strong>Δ column</strong> for every file (e.g. <code>+4.00 MB</code> if a file grew, <code>−500 KB</code> if it shrunk).
+</section>
+{% endif %}
+
 <section class="card-row">
   <div class="card card-info">
     <div class="card-label">Files</div>
@@ -48,14 +58,17 @@
     <div class="card-label">Total size</div>
     <div class="card-number">{{ format_bytes(scan.total_bytes) }}</div>
   </div>
+  {# Encryption stat cards only matter when we actually have encrypted backups #}
+  {% if (scan.encrypted_count or 0) > 0 %}
   <div class="card card-success">
     <div class="card-label">Encrypted-named</div>
     <div class="card-number">{{ scan.encrypted_count or 0 }}</div>
   </div>
   <div class="card card-{% if (scan.plain_count or 0) > 0 %}danger{% else %}success{% endif %}">
-    <div class="card-label">Plain-named</div>
+    <div class="card-label">No <code>_encrypted</code> suffix</div>
     <div class="card-number">{{ scan.plain_count or 0 }}</div>
   </div>
+  {% endif %}
   <div class="card card-amber">
     <div class="card-label">New files</div>
     <div class="card-number">{{ scan.new_file_count or 0 }}</div>
@@ -70,11 +83,21 @@
   </div>
 </section>
 
+{# ====================  Single search bar filtering all four tables  ==================== #}
+<div class="search-bar" style="margin-top: 1.5rem;">
+  <input type="search"
+         placeholder="Filter by job stem, filename, path…"
+         data-search-target="#by-job-table,#report1-table,#report2-table,#report3-table"
+         autocomplete="off">
+  <span class="search-count" data-search-count></span>
+  <span class="muted small">Filters all four tables below as you type.</span>
+</div>
+
 <section>
   <h2>By backup job — files grouped by name stem</h2>
   <p class="muted small">Files with the same name (ignoring date suffix) are grouped together. <code>Sage_Owner_2026-04-28.bak_encrypted</code> and <code>Sage_Owner_2026-04-29.bak_encrypted</code> share the stem <code>Sage_Owner</code>.</p>
   <div class="grid-wrap">
-  <table class="grid grid-tight">
+  <table class="grid grid-tight" id="by-job-table">
     <thead>
       <tr>
         <th>Job stem</th>
@@ -87,17 +110,22 @@
     </thead>
     <tbody>
       {% for g in by_job_groups %}
-      <tr>
+      <tr data-search-text="{{ g.stem|lower }} {% for f in g.files %}{{ f.filename|lower }} {% endfor %}">
         <td class="mono"><strong>{{ g.stem }}</strong></td>
         <td class="num">{{ g.count }}</td>
         <td class="num">{{ format_bytes(g.total_bytes) }}</td>
         <td class="small">{{ g.latest_mtime.strftime('%a, %b %d %Y · %H:%M') if g.latest_mtime else '—' }}</td>
         <td class="num">{{ format_bytes(g.newest_size) }}</td>
         <td>
-          {% if g.any_plain %}<span class="pill pill-amber">plain-named</span>{% endif %}
+          {# Only flag "no _encrypted suffix" when this scan actually has encrypted backups too —
+             i.e. we have a meaningful baseline. If 0 encrypted files exist, this folder isn't
+             a backup folder and the audit doesn't apply. #}
+          {% if g.any_plain and (scan.encrypted_count or 0) > 0 %}
+            <span class="pill pill-amber">no <code>_encrypted</code> suffix</span>
+          {% endif %}
         </td>
       </tr>
-      <tr>
+      <tr data-search-skip="1">
         <td colspan="6" style="background: var(--surface-2); padding: 0.4rem 0.85rem;">
           <details>
             <summary class="muted small" style="cursor: pointer;">Show {{ g.count }} file{{ 's' if g.count != 1 else '' }} in <strong>{{ g.stem }}</strong></summary>
@@ -132,7 +160,7 @@
   <h2>Report 1 — Size distribution (largest first)</h2>
   <p class="muted small">Amber = new file (no prior scan). Green = grew vs. previous scan. Red = shrunk vs. previous scan.</p>
   <div class="grid-wrap">
-  <table class="grid grid-tight">
+  <table class="grid grid-tight" id="report1-table">
     <thead>
       <tr>
         <th>Filename</th>
@@ -162,6 +190,10 @@
   </div>
 </section>
 
+{# Report 2 — Encryption audit. Only meaningful when at least one file has _encrypted in its name.
+   When zero files are encrypted-named, this isn't a backup folder and the audit doesn't apply,
+   so we skip the section entirely. #}
+{% if (scan.encrypted_count or 0) > 0 %}
 <section>
   <h2>Report 2 — Encryption-name audit</h2>
   {% if plain %}
@@ -170,7 +202,7 @@
       <p class="muted small">Confirm with your backup operator whether these files are expected to be unencrypted, or whether the encryption step was skipped.</p>
     </div>
     <div class="grid-wrap">
-    <table class="grid grid-tight">
+    <table class="grid grid-tight" id="report2-table">
       <thead><tr><th>Filename</th><th>Path</th><th class="num">Size</th><th>Modified</th></tr></thead>
       <tbody>
         {% for f in plain %}
@@ -186,14 +218,21 @@
     </div>
   {% else %}
     <p class="muted">All {{ scan.file_count or 0 }} files have <code>_encrypted</code> in the filename. ✓</p>
+    {# Empty placeholder table so the search-target selector still resolves cleanly #}
+    <table id="report2-table" style="display: none;"><tbody></tbody></table>
   {% endif %}
 </section>
+{% else %}
+{# No encrypted files at all. Render a hidden placeholder so the shared search bar's
+   target selector resolves without error. #}
+<table id="report2-table" style="display: none;"><tbody></tbody></table>
+{% endif %}
 
 <section>
   <h2>Report 3 — Timestamp ordering</h2>
   <p class="muted small">Files sorted oldest → newest by modification time. Day name shown to spot weekend / holiday gaps.</p>
   <div class="grid-wrap">
-  <table class="grid grid-tight">
+  <table class="grid grid-tight" id="report3-table">
     <thead>
       <tr>
         <th>Day</th>

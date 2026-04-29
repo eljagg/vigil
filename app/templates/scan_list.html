@@ -17,8 +17,15 @@
 </section>
 
 {% if scans %}
+<div class="search-bar">
+  <input type="search"
+         placeholder="Filter by path, operator, or workstation…"
+         data-search-target="#scans-history-table"
+         autocomplete="off">
+  <span class="search-count" data-search-count></span>
+</div>
 <div class="grid-wrap">
-<table class="grid">
+<table class="grid" id="scans-history-table">
   <thead>
     <tr>
       <th>When</th>

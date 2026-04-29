@@ -191,8 +191,15 @@
   <h2>Path roll-up</h2>
   <p class="muted">Each row is a folder that has been scanned. Click <em>Show files</em> to see the contents inline.</p>
   {% if per_path %}
+  <div class="search-bar">
+    <input type="search"
+           placeholder="Filter by label, path, or workstation…"
+           data-search-target="#path-rollup-table"
+           autocomplete="off">
+    <span class="search-count" data-search-count></span>
+  </div>
   <div class="grid-wrap">
-  <table class="grid">
+  <table class="grid" id="path-rollup-table">
     <thead>
       <tr>
         <th>Label / Path</th>
@@ -277,8 +284,15 @@
 <section>
   <h2>Recent scans</h2>
   {% if recent %}
+  <div class="search-bar">
+    <input type="search"
+           placeholder="Filter by path, operator, or workstation…"
+           data-search-target="#recent-scans-table"
+           autocomplete="off">
+    <span class="search-count" data-search-count></span>
+  </div>
   <div class="grid-wrap">
-  <table class="grid">
+  <table class="grid" id="recent-scans-table">
     <thead>
       <tr><th>When</th><th>Path</th><th>Operator</th><th>Workstation</th>
           <th class="num">Files</th><th class="num">Size</th><th>Status</th>

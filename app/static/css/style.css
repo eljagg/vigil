@@ -798,6 +798,50 @@ code, .mono {
   border-color: var(--accent-danger);
 }
 
+/* Search bar above tables */
+.search-bar {
+  display: flex; align-items: center; gap: 0.7rem;
+  margin: 0.7rem 0 0.5rem; flex-wrap: wrap;
+}
+.search-bar input[type="search"] {
+  flex: 1 1 280px;
+  min-width: 220px;
+  max-width: 480px;
+  padding: 0.45rem 0.75rem;
+  font-size: 13.5px;
+  font-family: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.search-bar input[type="search"]:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+}
+.search-count {
+  font-size: 12px; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.search-count.search-active {
+  color: var(--brand); font-weight: 600;
+}
+
+/* First-scan banner — informational, points operator at the diff workflow */
+.banner-info {
+  background: var(--info-bg); color: var(--info-text);
+  border: 1px solid var(--info-border);
+  border-left: 4px solid var(--accent-info);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 13.5px;
+}
+.banner-info strong { color: var(--info-text); }
+
 /* Reduced-motion support */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }

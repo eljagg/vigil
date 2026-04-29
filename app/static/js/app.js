@@ -87,4 +87,68 @@
       }
     });
   });
+
+  // --- Generic table search: any input[data-search-target="#tbl-id"] filters
+  //     rows of that table by substring match, case-insensitive. Multiple
+  //     comma-separated targets supported for filtering several tables at once. ---
+  document.querySelectorAll('[data-search-target]').forEach((input) => {
+    const targets = input.getAttribute('data-search-target')
+      .split(',').map(s => s.trim()).filter(Boolean);
+    const counterEl = input.parentElement
+      && input.parentElement.querySelector('[data-search-count]');
+
+    function applyFilter() {
+      const q = input.value.trim().toLowerCase();
+      let totalShown = 0, totalRows = 0;
+
+      targets.forEach((sel) => {
+        const tbl = document.querySelector(sel);
+        if (!tbl) return;
+        // Only direct rows of THIS table — never rows inside nested tables
+        // (e.g. the inner files panels in the by-job report).
+        const rows = tbl.querySelectorAll(':scope > tbody > tr');
+        rows.forEach((row) => {
+          // Skip rows that are companion expand rows (no real content, e.g. files-expand-row in dashboard, or the details rows in by-job)
+          if (row.classList.contains('files-expand-row')) return;
+          if (row.dataset.searchSkip === '1') return;
+          totalRows += 1;
+          let visible;
+          if (!q) {
+            row.style.display = '';
+            visible = true;
+            totalShown += 1;
+          } else {
+            const text = (row.dataset.searchText || row.textContent).toLowerCase();
+            if (text.includes(q)) {
+              row.style.display = '';
+              visible = true;
+              totalShown += 1;
+            } else {
+              row.style.display = 'none';
+              visible = false;
+            }
+          }
+          // If the next sibling is a companion (skip / expand row), match its visibility
+          // to its parent's so we don't leave orphan expand panels visible.
+          const nxt = row.nextElementSibling;
+          if (nxt && (nxt.dataset.searchSkip === '1' || nxt.classList.contains('files-expand-row'))) {
+            nxt.style.display = visible ? '' : 'none';
+          }
+        });
+      });
+
+      if (counterEl) {
+        if (q) {
+          counterEl.textContent = `${totalShown} of ${totalRows}`;
+          counterEl.classList.add('search-active');
+        } else {
+          counterEl.textContent = `${totalRows}`;
+          counterEl.classList.remove('search-active');
+        }
+      }
+    }
+
+    input.addEventListener('input', applyFilter);
+    applyFilter(); // initial count
+  });
 })();
