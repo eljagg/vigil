@@ -10,11 +10,7 @@ echo ">>> Starting Postgres"
 sudo service postgresql start
 
 echo ">>> Creating local dev database"
-sudo -u postgres psql <<SQL
-CREATE USER vigil WITH PASSWORD 'vigil';
-CREATE DATABASE vigil OWNER vigil;
-GRANT ALL PRIVILEGES ON DATABASE vigil TO vigil;
-SQL
+sudo su - postgres -c "psql -c \"CREATE USER vigil WITH PASSWORD 'vigil';\" -c \"CREATE DATABASE vigil OWNER vigil;\" -c \"GRANT ALL PRIVILEGES ON DATABASE vigil TO vigil;\"" 2>/dev/null || echo "(database may already exist — continuing)"
 
 echo ">>> Installing Python dependencies"
 pip install --quiet --upgrade pip

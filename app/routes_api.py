@@ -1,11 +1,14 @@
 """JSON API for browser-driven scans."""
 from __future__ import annotations
 
-from flask import Blueprint, abort, g, jsonify, request
+import datetime as _dt
+
+from flask import Blueprint, g, jsonify, request
+from sqlalchemy import desc, select
 
 from . import audit, rotation, scanner
 from .auth import login_required
-from .extensions import csrf, db
+from .extensions import db
 from .models import PathEntry
 
 
@@ -19,8 +22,9 @@ def scan_submit():
 
     Expected payload:
         {
-          "path": "Backup Logs/Archive",
-          "label": "Mars · Daily backup archive",  // optional
+          "path": "Archive",                              # folder name from picker
+          "label": "Z:\\Backup Logs\\Archive on MARS",    # REQUIRED
+          "workstation": "MARS-WS-01",                    # optional
           "files": [
             {"relative_path": "...", "filename": "...",
              "size_bytes": 12345, "mtime": "2026-04-28T12:00:00Z"},
@@ -30,11 +34,18 @@ def scan_submit():
     """
     data = request.get_json(silent=True) or {}
     path = (data.get("path") or "").strip()
-    label = (data.get("label") or "").strip() or None
+    label = (data.get("label") or "").strip()
+    workstation = (data.get("workstation") or "").strip() or None
     items = data.get("files") or []
 
     if not path:
         return jsonify(ok=False, error="path is required"), 400
+    if not label:
+        return jsonify(
+            ok=False,
+            error="label is required — describe the actual path "
+                  "(e.g. 'Z:\\\\Backup Logs\\\\Archive on MARS')"
+        ), 400
     if not isinstance(items, list):
         return jsonify(ok=False, error="files must be a list"), 400
     if len(items) > 50000:
@@ -44,7 +55,6 @@ def scan_submit():
 
     # Reuse existing PathEntry if this folder has been scanned before, so the
     # diff has a reference point. Otherwise create a new one.
-    from sqlalchemy import desc, select
     pe = db.session.scalar(
         select(PathEntry).where(PathEntry.path == path)
         .order_by(desc(PathEntry.entered_at)).limit(1)
@@ -54,26 +64,27 @@ def scan_submit():
         db.session.add(pe)
         db.session.flush()
     else:
-        # Update label if the operator gave a new one, and refresh metadata.
         if label and label != pe.label:
             pe.label = label
         pe.entered_by = g.user.id
-        import datetime as _dt
         pe.entered_at = _dt.datetime.now(_dt.UTC)
 
-    # Determine whose week it is
     on_duty = rotation.current_assignment()
     scheduled_user_id = on_duty["id"] if on_duty else None
+    ua = (request.headers.get("User-Agent") or "")[:255] or None
 
     scan = scanner.ingest_scan(
         path_entry=pe, files=files,
         operator_user_id=g.user.id,
         scheduled_user_id=scheduled_user_id,
+        workstation=workstation,
+        user_agent=ua,
     )
 
     audit.record("scan_run", {
         "scan_id": scan.id, "path_entry_id": pe.id,
-        "path": path, "files": scan.file_count or 0,
+        "path": path, "label": label, "workstation": workstation,
+        "files": scan.file_count or 0,
         "scheduled_user_id": scheduled_user_id,
     })
 

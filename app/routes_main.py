@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+from collections import defaultdict
 
 from flask import (
     Blueprint, Response, abort, current_app, flash, g, jsonify,
@@ -10,7 +11,7 @@ from flask import (
 from sqlalchemy import desc, func, select
 
 from . import audit, exports, rotation, scanner
-from .auth import login_required
+from .auth import login_required, admin_required
 from .extensions import db
 from .models import FileSnapshot, PathEntry, Scan, User, settings_dict
 
@@ -30,15 +31,135 @@ def healthz():
         return jsonify(status="degraded", error=str(e)), 503
 
 
+# ---------------------- Dashboard helpers ----------------------
+
+def _storage_trend(days: int = 14) -> list[dict]:
+    """Total bytes scanned per day for the last N days, for the sparkline."""
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=days - 1)
+
+    rows = db.session.execute(
+        select(
+            func.date(Scan.started_at).label("day"),
+            func.sum(Scan.total_bytes).label("bytes"),
+        )
+        .where(
+            Scan.status == "completed",
+            Scan.is_hidden.is_(False),
+            func.date(Scan.started_at) >= start,
+            func.date(Scan.started_at) <= today,
+        )
+        .group_by("day")
+    ).all()
+
+    by_day = {r.day: int(r.bytes or 0) for r in rows}
+
+    out = []
+    for i in range(days):
+        d = start + datetime.timedelta(days=i)
+        out.append({"date": d, "bytes": by_day.get(d, 0)})
+    return out
+
+
+def _anomalies(threshold_pct: float = 20.0, limit: int = 10) -> list[dict]:
+    """Files in the most recent completed scan per path with size deltas
+    exceeding the threshold percent vs prior scan."""
+    out = []
+
+    # Most recent completed, non-hidden scan per path
+    paths = db.session.scalars(select(PathEntry)).all()
+    for pe in paths:
+        scan = db.session.scalar(
+            select(Scan)
+            .where(Scan.path_entry_id == pe.id,
+                   Scan.status == "completed",
+                   Scan.is_hidden.is_(False))
+            .order_by(desc(Scan.started_at))
+            .limit(1)
+        )
+        if not scan:
+            continue
+        # Pull anomalous file snapshots from this scan
+        snaps = db.session.scalars(
+            select(FileSnapshot).where(FileSnapshot.scan_id == scan.id)
+        ).all()
+        for f in snaps:
+            if f.prev_size_bytes is None or f.prev_size_bytes == 0:
+                continue
+            if f.size_delta_bytes is None:
+                continue
+            pct = (abs(f.size_delta_bytes) / f.prev_size_bytes) * 100.0
+            if pct < threshold_pct:
+                continue
+            out.append({
+                "scan_id": scan.id,
+                "path_label": pe.label or pe.path,
+                "filename": f.filename,
+                "relative_path": f.relative_path,
+                "prev_size": f.prev_size_bytes,
+                "current_size": f.size_bytes,
+                "delta_bytes": f.size_delta_bytes,
+                "pct": pct,
+                "direction": "grew" if f.size_delta_bytes > 0 else "shrunk",
+            })
+
+    out.sort(key=lambda x: x["pct"], reverse=True)
+    return out[:limit]
+
+
+def _week_counters() -> dict:
+    """Counters scoped to the current calendar week (Mon-Sun)."""
+    today = datetime.date.today()
+    monday = today - datetime.timedelta(days=today.weekday())
+    sunday = monday + datetime.timedelta(days=6)
+
+    scans_this_week = db.session.scalar(
+        select(func.count(Scan.id)).where(
+            Scan.status == "completed",
+            Scan.is_hidden.is_(False),
+            func.date(Scan.started_at) >= monday,
+            func.date(Scan.started_at) <= sunday,
+        )
+    ) or 0
+
+    paths_covered = db.session.scalar(
+        select(func.count(func.distinct(Scan.path_entry_id))).where(
+            Scan.status == "completed",
+            Scan.is_hidden.is_(False),
+            func.date(Scan.started_at) >= monday,
+            func.date(Scan.started_at) <= sunday,
+        )
+    ) or 0
+
+    paths_total = db.session.scalar(select(func.count(PathEntry.id))) or 0
+
+    scans_today = db.session.scalar(
+        select(func.count(Scan.id)).where(
+            Scan.status == "completed",
+            Scan.is_hidden.is_(False),
+            func.date(Scan.started_at) == today,
+        )
+    ) or 0
+
+    return {
+        "scans_this_week": scans_this_week,
+        "paths_covered": paths_covered,
+        "paths_total": paths_total,
+        "scans_today": scans_today,
+    }
+
+
 # ---------------------- Dashboard ----------------------
 
 @bp.route("/")
 @login_required
 def dashboard():
+    # Recent scans (excluding hidden)
     recent = db.session.execute(
         select(Scan, PathEntry, User)
         .join(PathEntry, PathEntry.id == Scan.path_entry_id)
         .join(User, User.id == Scan.operator_user_id)
+        .where(Scan.is_hidden.is_(False))
         .order_by(desc(Scan.started_at))
         .limit(25)
     ).all()
@@ -47,25 +168,22 @@ def dashboard():
         "file_count": s.file_count, "total_bytes": s.total_bytes,
         "new_file_count": s.new_file_count, "grew_count": s.grew_count,
         "shrunk_count": s.shrunk_count,
+        "workstation": s.workstation,
         "path": p.path, "label": p.label,
         "operator_username": u.username, "operator_full_name": u.full_name,
     } for s, p, u in recent]
 
-    totals = {
-        "scans_total":   db.session.scalar(select(func.count(Scan.id)).where(Scan.status == "completed")) or 0,
-        "scans_today":   db.session.scalar(select(func.count(Scan.id)).where(
-                            Scan.status == "completed",
-                            func.date(Scan.started_at) == datetime.date.today())) or 0,
-        "active_users":  db.session.scalar(select(func.count(User.id)).where(User.is_active.is_(True))) or 0,
-        "path_entries":  db.session.scalar(select(func.count(PathEntry.id))) or 0,
-    }
+    counters = _week_counters()
+    storage_trend = _storage_trend(days=14)
+    anomalies = _anomalies(threshold_pct=20.0, limit=10)
 
-    # Per-path roll-up: most recent scan per path entry
+    # Per-path roll-up: most recent non-hidden scan per path entry
     per_path = []
     paths = db.session.scalars(select(PathEntry).order_by(desc(PathEntry.entered_at))).all()
     for pe in paths:
         last = db.session.scalar(
-            select(Scan).where(Scan.path_entry_id == pe.id)
+            select(Scan).where(Scan.path_entry_id == pe.id,
+                               Scan.is_hidden.is_(False))
             .order_by(desc(Scan.started_at)).limit(1)
         )
         entered_by = db.session.get(User, pe.entered_by) if pe.entered_by else None
@@ -75,6 +193,7 @@ def dashboard():
             "last_scan_id": last.id if last else None,
             "last_started": last.started_at if last else None,
             "last_status": last.status if last else None,
+            "last_workstation": last.workstation if last else None,
             "file_count": last.file_count if last else None,
             "total_bytes": last.total_bytes if last else None,
             "new_file_count": last.new_file_count if last else 0,
@@ -91,7 +210,9 @@ def dashboard():
 
     return render_template(
         "dashboard.html",
-        recent=recent_rows, totals=totals, per_path=per_path,
+        recent=recent_rows, counters=counters,
+        storage_trend=storage_trend, anomalies=anomalies,
+        per_path=per_path,
         on_duty=on_duty, upcoming=upcoming,
         missed_weeks=missed_weeks, partial_weeks=partial_weeks,
         current_coverage=current_coverage,
@@ -104,8 +225,6 @@ def dashboard():
 @bp.route("/scan/new")
 @login_required
 def scan_new():
-    """Render the scan page; the actual scan happens in the browser via JS
-    and POSTs results to /api/scan/submit."""
     on_duty = rotation.current_assignment()
     recent_paths = db.session.execute(
         select(PathEntry.path, PathEntry.label, func.max(PathEntry.entered_at).label("last"))
@@ -141,42 +260,121 @@ def scan_view(scan_id: int):
             "size_delta_bytes": f.size_delta_bytes,
             "is_new": f.is_new, "is_encrypted_named": f.is_encrypted_named,
             "mtime": f.mtime, "mtime_day": day, "mtime_human": human,
+            "job_stem": scanner.extract_job_stem(f.filename),
         })
 
     by_size = sorted(files_data, key=lambda f: f["size_bytes"], reverse=True)
     by_mtime = sorted(files_data, key=lambda f: f["mtime"] or datetime.datetime.min)
     plain = [f for f in files_data if not f["is_encrypted_named"]]
-    encrypted = [f for f in files_data if f["is_encrypted_named"]]
+
+    # Group by backup job stem
+    by_job: dict[str, list[dict]] = defaultdict(list)
+    for f in files_data:
+        by_job[f["job_stem"]].append(f)
+    # Order each group's files by mtime desc, and order groups by total size desc
+    for stem in by_job:
+        by_job[stem].sort(key=lambda f: f["mtime"] or datetime.datetime.min, reverse=True)
+    by_job_groups = sorted(
+        [
+            {
+                "stem": stem,
+                "files": items,
+                "count": len(items),
+                "total_bytes": sum(f["size_bytes"] for f in items),
+                "latest_mtime": max((f["mtime"] for f in items if f["mtime"]), default=None),
+                "newest_size": items[0]["size_bytes"] if items else 0,
+                "any_plain": any(not f["is_encrypted_named"] for f in items),
+            }
+            for stem, items in by_job.items()
+        ],
+        key=lambda g: g["total_bytes"], reverse=True,
+    )
 
     return render_template(
         "scan_view.html",
         scan=scan, path_entry=pe,
         operator={"id": op.id, "username": op.username, "full_name": op.full_name} if op else None,
         scheduled={"id": sched.id, "username": sched.username, "full_name": sched.full_name} if sched else None,
-        by_size=by_size, by_mtime=by_mtime, plain=plain, encrypted=encrypted,
+        by_size=by_size, by_mtime=by_mtime, plain=plain,
+        by_job_groups=by_job_groups,
         format_bytes=scanner.format_bytes, format_delta=scanner.format_delta,
     )
+
+
+@bp.route("/scan/<int:scan_id>/files-fragment")
+@login_required
+def scan_files_fragment(scan_id: int):
+    """Returns a small HTML fragment listing files for a scan, suitable for
+    inline expansion on the dashboard rollup."""
+    scan = db.session.get(Scan, scan_id)
+    if not scan:
+        abort(404)
+    files = db.session.scalars(
+        select(FileSnapshot).where(FileSnapshot.scan_id == scan_id)
+        .order_by(desc(FileSnapshot.size_bytes))
+        .limit(50)
+    ).all()
+    total = db.session.scalar(
+        select(func.count(FileSnapshot.id)).where(FileSnapshot.scan_id == scan_id)
+    ) or 0
+    return render_template(
+        "_files_fragment.html",
+        scan=scan, files=files, total=total,
+        format_bytes=scanner.format_bytes, format_delta=scanner.format_delta,
+    )
+
+
+@bp.route("/scan/<int:scan_id>/hide", methods=["POST"])
+@admin_required
+def scan_hide(scan_id: int):
+    scan = db.session.get(Scan, scan_id)
+    if not scan:
+        abort(404)
+    scan.is_hidden = True
+    db.session.commit()
+    audit.record("scan_hidden", {"scan_id": scan_id})
+    flash(f"Scan #{scan_id} hidden from dashboard.", "success")
+    return redirect(request.referrer or url_for("main.dashboard"))
+
+
+@bp.route("/scan/<int:scan_id>/unhide", methods=["POST"])
+@admin_required
+def scan_unhide(scan_id: int):
+    scan = db.session.get(Scan, scan_id)
+    if not scan:
+        abort(404)
+    scan.is_hidden = False
+    db.session.commit()
+    audit.record("scan_unhidden", {"scan_id": scan_id})
+    flash(f"Scan #{scan_id} restored to dashboard.", "success")
+    return redirect(request.referrer or url_for("main.scan_list"))
 
 
 @bp.route("/scans")
 @login_required
 def scan_list():
-    rows = db.session.execute(
+    show_hidden = request.args.get("show_hidden") == "1"
+    q = (
         select(Scan, PathEntry, User)
         .join(PathEntry, PathEntry.id == Scan.path_entry_id)
         .join(User, User.id == Scan.operator_user_id)
         .order_by(desc(Scan.started_at))
         .limit(200)
-    ).all()
+    )
+    if not show_hidden:
+        q = q.where(Scan.is_hidden.is_(False))
+    rows = db.session.execute(q).all()
     scans = [{
         "id": s.id, "started_at": s.started_at, "status": s.status,
         "file_count": s.file_count, "total_bytes": s.total_bytes,
         "new_file_count": s.new_file_count, "grew_count": s.grew_count,
         "shrunk_count": s.shrunk_count,
+        "is_hidden": s.is_hidden,
+        "workstation": s.workstation,
         "path": p.path, "label": p.label,
         "operator_username": u.username, "operator_full_name": u.full_name,
     } for s, p, u in rows]
-    return render_template("scan_list.html", scans=scans,
+    return render_template("scan_list.html", scans=scans, show_hidden=show_hidden,
                            format_bytes=scanner.format_bytes)
 
 
@@ -221,7 +419,6 @@ def uploaded_file(filename: str):
     data = read_local_upload(filename)
     if data is None:
         abort(404)
-    # Detect mime type roughly from extension
     ext = filename.rsplit(".", 1)[-1].lower()
     mime = {
         "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",

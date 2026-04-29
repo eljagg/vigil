@@ -1,0 +1,33 @@
+<div class="files-expand-inner">
+  <div class="files-expand-head">
+    <strong>Top {{ files | length }} of {{ total }} files</strong>
+    <span class="muted small">— sorted by size, largest first</span>
+    <a href="{{ url_for('main.scan_view', scan_id=scan.id) }}" class="link" style="margin-left: auto;">Open full scan view →</a>
+  </div>
+  <table class="grid grid-tight files-expand-table">
+    <thead>
+      <tr><th>Filename</th><th>Path</th><th class="num">Size</th><th class="num">Previous</th><th class="num">Δ</th><th>Modified</th></tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr class="{% if f.is_new %}row-new{% elif f.size_delta_bytes is not none and f.size_delta_bytes < 0 %}row-shrunk{% elif f.size_delta_bytes is not none and f.size_delta_bytes > 0 %}row-grew{% endif %}">
+        <td class="mono">{{ f.filename }}</td>
+        <td class="mono muted small">{{ f.relative_path }}</td>
+        <td class="num">{{ format_bytes(f.size_bytes) }}</td>
+        <td class="num muted">{{ format_bytes(f.prev_size_bytes) if f.prev_size_bytes is not none else '—' }}</td>
+        <td class="num">
+          {% if f.is_new %}<span class="pill pill-amber">new</span>
+          {% else %}{{ format_delta(f.size_delta_bytes) }}{% endif %}
+        </td>
+        <td class="small">{{ f.mtime.strftime('%Y-%m-%d %H:%M') if f.mtime else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if total > files|length %}
+  <div class="muted small" style="padding: 0.6rem 1rem;">
+    Showing {{ files|length }} of {{ total }} files.
+    <a href="{{ url_for('main.scan_view', scan_id=scan.id) }}">View all →</a>
+  </div>
+  {% endif %}
+</div>

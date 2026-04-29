@@ -95,6 +95,9 @@ class Scan(db.Model):
     grew_count:         Mapped[Optional[int]] = mapped_column(Integer)
     shrunk_count:       Mapped[Optional[int]] = mapped_column(Integer)
     error_message:      Mapped[Optional[str]] = mapped_column(Text)
+    is_hidden:          Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    workstation:        Mapped[Optional[str]] = mapped_column(String(120))
+    user_agent:         Mapped[Optional[str]] = mapped_column(String(255))
 
     path_entry = relationship("PathEntry")
     operator   = relationship("User", foreign_keys=[operator_user_id])

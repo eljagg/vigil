@@ -16,6 +16,7 @@
   const browseBtn = document.getElementById('browse-btn');
   const pickedBox = document.getElementById('picked-folder');
   const labelInput = document.getElementById('label-input');
+  const workstationInput = document.getElementById('workstation-input');
   const runBtn = document.getElementById('run-btn');
   const progressCard = document.getElementById('progress-card');
   const progressBar = document.getElementById('progress-bar');
@@ -24,6 +25,15 @@
   const progressStage = document.getElementById('progress-stage');
 
   if (!browseBtn) return; // not on the scan page
+
+  // Persist workstation across sessions
+  if (workstationInput) {
+    const saved = localStorage.getItem('vigil.workstation');
+    if (saved) workstationInput.value = saved;
+    workstationInput.addEventListener('blur', () => {
+      localStorage.setItem('vigil.workstation', workstationInput.value.trim());
+    });
+  }
 
   if (!supported) {
     if (compatWarn) compatWarn.classList.add('show');
@@ -55,6 +65,12 @@
       alert('Pick a folder first.');
       return;
     }
+    const label = (labelInput && labelInput.value || '').trim();
+    if (!label) {
+      alert('A label is required. Describe the actual path so this scan can be identified later (e.g. "Z:\\Backup Logs\\Archive on MARS").');
+      labelInput && labelInput.focus();
+      return;
+    }
     runBtn.disabled = true;
     browseBtn.disabled = true;
     progressCard.classList.add('active');
@@ -76,9 +92,11 @@
     setProgress(60, files.length, sumBytes(files), 'Sending to server…');
 
     const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    const workstation = (workstationInput && workstationInput.value || '').trim() || null;
     const payload = {
       path: pickedName,
-      label: (labelInput && labelInput.value || '').trim() || null,
+      label: label,
+      workstation: workstation,
       files: files,
     };
 

@@ -8,6 +8,7 @@ the database.
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
@@ -15,6 +16,63 @@ from sqlalchemy import desc, select
 
 from .extensions import db
 from .models import FileSnapshot, PathEntry, Scan
+
+
+# Common archive / encrypted extensions, stripped first
+_EXT_RE = re.compile(
+    r'(\.bak_encrypted|\.bak|\.sql|\.gz|\.zip|\.tar|\.tgz|\.7z'
+    r'|\.rar|\.dump|\.enc|\.encrypted|\.full|\.diff|\.trn)$',
+    re.IGNORECASE,
+)
+
+# Generic short extension fallback (1-5 alphanumeric chars after a dot)
+_GENERIC_EXT_RE = re.compile(r'\.[A-Za-z0-9]{1,5}$')
+
+# Trailing date / timestamp suffix on a backup filename:
+#   - YYYY-MM-DD / YYYY_MM_DD / YYYYMMDD
+#   - 8+ digits (timestamp)
+#   - bare year 19xx or 20xx
+_DATE_SUFFIX_RE = re.compile(
+    r'[_\-\.]'
+    r'(?:'
+    r'(?:19|20)\d{2}[\-_/]?\d{2}[\-_/]?\d{2}'   # full date
+    r'|\d{8,14}'                                  # plain digit run
+    r'|(?:19|20)\d{2}'                            # bare year
+    r')'
+    r'(?:[_\-\.]\d{1,6})*'                       # optional time / sequence
+    r'.*$'
+)
+
+
+def extract_job_stem(filename: str) -> str:
+    """Best-effort extraction of the backup job 'stem' from a filename.
+
+    Strips common archive extensions and trailing dates, leaving the
+    name of the backup job itself. Examples:
+
+        Sage_Owner_2026-04-28.bak_encrypted  -> Sage_Owner
+        db_full_20260428_120000.sql.gz       -> db_full
+        differential.bak                     -> differential
+        weekly_full_2026-04-28.bak_encrypted -> weekly_full
+        sql_log_2026.bak_encrypted           -> sql_log
+
+    Falls back to the original filename if no pattern matches.
+    """
+    name = filename
+    # Strip known backup-style extensions first (handles nested like .sql.gz)
+    for _ in range(5):
+        new = _EXT_RE.sub('', name)
+        if new == name:
+            break
+        name = new
+    # Strip one generic extension (e.g. .txt, .log)
+    name = _GENERIC_EXT_RE.sub('', name)
+    # Strip trailing date / timestamp / year suffix
+    m = _DATE_SUFFIX_RE.search(name)
+    if m:
+        name = name[:m.start()]
+    name = name.rstrip('_-. ')
+    return name or filename
 
 
 @dataclass
@@ -77,7 +135,9 @@ def previous_sizes(scan_id: int) -> dict[str, int]:
 
 def ingest_scan(path_entry: PathEntry, files: list[IncomingFile],
                 operator_user_id: int,
-                scheduled_user_id: Optional[int]) -> Scan:
+                scheduled_user_id: Optional[int],
+                workstation: Optional[str] = None,
+                user_agent: Optional[str] = None) -> Scan:
     """Create a Scan + FileSnapshots, computing diff against the prior scan
     of the same path entry."""
     prev = previous_scan(path_entry.id)
@@ -88,6 +148,8 @@ def ingest_scan(path_entry: PathEntry, files: list[IncomingFile],
         operator_user_id=operator_user_id,
         scheduled_user_id=scheduled_user_id,
         status="running",
+        workstation=workstation,
+        user_agent=user_agent,
     )
     db.session.add(scan)
     db.session.flush()  # need scan.id for snapshots

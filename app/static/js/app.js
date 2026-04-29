@@ -62,4 +62,29 @@
       navBtn.setAttribute('aria-expanded', 'false');
     });
   }
+
+  // --- Dashboard rollup expand: lazy-load file list inline ---
+  document.querySelectorAll('[data-expand-scan]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const scanId = btn.getAttribute('data-expand-scan');
+      const targetSelector = btn.getAttribute('data-target');
+      const target = document.querySelector(targetSelector);
+      if (!target) return;
+      const isOpen = target.classList.toggle('open');
+      btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      btn.textContent = isOpen ? 'Hide files' : 'Show files';
+      if (isOpen && !target.dataset.loaded) {
+        target.innerHTML = '<div class="muted small" style="padding:0.6rem;">Loading…</div>';
+        try {
+          const r = await fetch(`/scan/${scanId}/files-fragment`, { credentials: 'same-origin' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          target.innerHTML = await r.text();
+          target.dataset.loaded = '1';
+        } catch (err) {
+          target.innerHTML = `<div class="muted small" style="padding:0.6rem;">Failed to load files: ${err.message}</div>`;
+        }
+      }
+    });
+  });
 })();

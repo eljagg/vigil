@@ -25,6 +25,18 @@
   Firefox, Safari, and mobile browsers can view scan results but cannot start a new scan.
 </div>
 
+<section class="alert-box alert-warn" style="margin-bottom: 1rem;">
+  <div class="alert-head">
+    <span class="alert-icon">!</span>
+    <strong>Don't pick cloud-synced folders</strong>
+  </div>
+  <p class="muted small" style="margin-bottom: 0;">
+    Avoid OneDrive, iCloud, Dropbox, or Google Drive folders. Those services may show "download" prompts
+    when Vigil reads file metadata, even though Vigil never downloads anything.
+    Pick a <strong>mapped network drive</strong> (e.g. <code>Z:\Backup Logs\Archive</code>) or a <strong>local-only folder</strong>.
+  </p>
+</section>
+
 <section class="scanner-card">
   <div class="scanner-step">
     <h3>1 · Pick the backup folder</h3>
@@ -34,13 +46,23 @@
   </div>
 
   <div class="scanner-step">
-    <h3>2 · Label this scan <span class="muted small">(optional)</span></h3>
-    <p class="muted small">A short note so you can find it later, e.g. "Mars · daily archive" or "Q2 month-end".</p>
-    <input type="text" id="label-input" maxlength="160" placeholder="Label (optional)" style="padding: 0.55rem 0.7rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); width: 100%; max-width: 480px; font-family: inherit; font-size: 14px;">
+    <h3>2 · Describe the actual path <span class="required-tag">required</span></h3>
+    <p class="muted small">Browsers don't expose the full Windows path — only the folder name. Type the real path here so this scan can be identified later (e.g. <code>Z:\Backup Logs\Archive on MARS</code>).</p>
+    <input type="text" id="label-input" maxlength="160" required
+           placeholder="e.g. Z:\Backup Logs\Archive on MARS"
+           class="prominent-input">
   </div>
 
   <div class="scanner-step">
-    <h3>3 · Run the scan</h3>
+    <h3>3 · Workstation <span class="muted small">(optional, remembered on this machine)</span></h3>
+    <p class="muted small">A short name for this workstation, e.g. <code>MARS-WS-01</code>. Helps identify which machine ran the scan.</p>
+    <input type="text" id="workstation-input" maxlength="120"
+           placeholder="e.g. MARS-WS-01"
+           class="prominent-input">
+  </div>
+
+  <div class="scanner-step">
+    <h3>4 · Run the scan</h3>
     <p class="muted small">Vigil walks the folder, builds the manifest in your browser, and submits it for diff against the previous scan of this folder.</p>
     <button type="button" class="btn btn-primary" id="run-btn" disabled>Run scan</button>
   </div>

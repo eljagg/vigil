@@ -17,6 +17,9 @@
     {% if scan.completed_at %}
       <div><strong>Completed:</strong> {{ scan.completed_at.strftime('%A, %B %d %Y · %H:%M') }}</div>
     {% endif %}
+    {% if scan.workstation %}
+      <div><strong>Workstation:</strong> <span class="mono">{{ scan.workstation }}</span></div>
+    {% endif %}
     <div><strong>Status:</strong>
       {% if scan.status == 'completed' %}<span class="status status-ok">Completed</span>
       {% elif scan.status == 'failed' %}<span class="status status-fail">Failed</span>
@@ -64,6 +67,64 @@
   <div class="card card-danger">
     <div class="card-label">Shrunk</div>
     <div class="card-number">{{ scan.shrunk_count or 0 }}</div>
+  </div>
+</section>
+
+<section>
+  <h2>By backup job — files grouped by name stem</h2>
+  <p class="muted small">Files with the same name (ignoring date suffix) are grouped together. <code>Sage_Owner_2026-04-28.bak_encrypted</code> and <code>Sage_Owner_2026-04-29.bak_encrypted</code> share the stem <code>Sage_Owner</code>.</p>
+  <div class="grid-wrap">
+  <table class="grid grid-tight">
+    <thead>
+      <tr>
+        <th>Job stem</th>
+        <th class="num">Versions</th>
+        <th class="num">Total size</th>
+        <th>Newest</th>
+        <th class="num">Newest size</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for g in by_job_groups %}
+      <tr>
+        <td class="mono"><strong>{{ g.stem }}</strong></td>
+        <td class="num">{{ g.count }}</td>
+        <td class="num">{{ format_bytes(g.total_bytes) }}</td>
+        <td class="small">{{ g.latest_mtime.strftime('%a, %b %d %Y · %H:%M') if g.latest_mtime else '—' }}</td>
+        <td class="num">{{ format_bytes(g.newest_size) }}</td>
+        <td>
+          {% if g.any_plain %}<span class="pill pill-amber">plain-named</span>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td colspan="6" style="background: var(--surface-2); padding: 0.4rem 0.85rem;">
+          <details>
+            <summary class="muted small" style="cursor: pointer;">Show {{ g.count }} file{{ 's' if g.count != 1 else '' }} in <strong>{{ g.stem }}</strong></summary>
+            <table class="grid grid-tight" style="margin-top: 0.5rem;">
+              <thead>
+                <tr><th>Filename</th><th>Modified</th><th class="num">Size</th><th class="num">Δ vs. previous</th></tr>
+              </thead>
+              <tbody>
+                {% for f in g.files %}
+                <tr class="{% if f.is_new %}row-new{% elif f.size_delta_bytes is not none and f.size_delta_bytes < 0 %}row-shrunk{% elif f.size_delta_bytes is not none and f.size_delta_bytes > 0 %}row-grew{% endif %}">
+                  <td class="mono">{{ f.filename }}</td>
+                  <td class="small">{{ f.mtime_human }}</td>
+                  <td class="num">{{ format_bytes(f.size_bytes) }}</td>
+                  <td class="num">
+                    {% if f.is_new %}<span class="pill pill-amber">new</span>
+                    {% else %}{{ format_delta(f.size_delta_bytes) }}{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   </div>
 </section>
 
