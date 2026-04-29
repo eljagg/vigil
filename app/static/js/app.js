@@ -151,4 +151,69 @@
     input.addEventListener('input', applyFilter);
     applyFilter(); // initial count
   });
+  // --- Tabbed report panes (scan detail) ---
+  document.querySelectorAll('[data-tab-group]').forEach((group) => {
+    const groupId = group.getAttribute('data-tab-group');
+    const buttons = group.querySelectorAll('[data-tab]');
+    const panes = document.querySelectorAll(`[data-tab-pane][data-tab-group-ref="${groupId}"]`);
+    if (!buttons.length || !panes.length) return;
+
+    // Restore last-active tab from localStorage, or default to first
+    const storageKey = `vigil.activeTab.${groupId}`;
+    const saved = localStorage.getItem(storageKey);
+    const defaultTab = buttons[0].getAttribute('data-tab');
+    const initial = saved && Array.from(buttons).some(b => b.getAttribute('data-tab') === saved)
+      ? saved : defaultTab;
+
+    function activate(tab) {
+      buttons.forEach((b) => {
+        const isActive = b.getAttribute('data-tab') === tab;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      panes.forEach((p) => {
+        p.classList.toggle('active', p.getAttribute('data-tab-pane') === tab);
+      });
+      try { localStorage.setItem(storageKey, tab); } catch (e) {}
+    }
+    activate(initial);
+
+    buttons.forEach((b) => {
+      b.addEventListener('click', () => activate(b.getAttribute('data-tab')));
+    });
+  });
+
+  // --- Collapsible sections (dashboard panels) — state persisted to localStorage ---
+  document.querySelectorAll('.collapsible[data-section-id]').forEach((sec) => {
+    const id = sec.getAttribute('data-section-id');
+    const heading = sec.querySelector('.collapsible-heading');
+    if (!heading) return;
+    const storageKey = `vigil.collapsed.${id}`;
+    const saved = localStorage.getItem(storageKey);
+    if (saved === '1') sec.setAttribute('data-collapsed', '1');
+
+    heading.setAttribute('role', 'button');
+    heading.setAttribute('tabindex', '0');
+    heading.setAttribute('aria-expanded', sec.getAttribute('data-collapsed') === '1' ? 'false' : 'true');
+
+    function toggle() {
+      const wasCollapsed = sec.getAttribute('data-collapsed') === '1';
+      if (wasCollapsed) {
+        sec.removeAttribute('data-collapsed');
+        try { localStorage.removeItem(storageKey); } catch (e) {}
+        heading.setAttribute('aria-expanded', 'true');
+      } else {
+        sec.setAttribute('data-collapsed', '1');
+        try { localStorage.setItem(storageKey, '1'); } catch (e) {}
+        heading.setAttribute('aria-expanded', 'false');
+      }
+    }
+    heading.addEventListener('click', toggle);
+    heading.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+      }
+    });
+  });
 })();

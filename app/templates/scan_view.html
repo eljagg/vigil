@@ -27,6 +27,7 @@
     </div>
   </div>
   <div class="scan-actions">
+    <a href="{{ url_for('main.scan_new', from_scan=scan.id) }}" class="btn btn-primary">Rescan</a>
     <a href="{{ url_for('main.scan_export_csv', scan_id=scan.id) }}" class="btn">Export CSV</a>
     <a href="{{ url_for('main.scan_export_pdf', scan_id=scan.id) }}" class="btn">Export PDF</a>
   </div>
@@ -39,13 +40,13 @@
 </section>
 {% endif %}
 
-{# First-scan banner: detect by inspecting whether any file has prior-size data #}
 {% set has_prior_data = by_size | selectattr('prev_size_bytes', 'ne', none) | list %}
 {% if not has_prior_data and scan.status == 'completed' and (scan.file_count or 0) > 0 %}
 <section class="banner-info">
   <strong>First scan of this folder.</strong>
   Vigil tracks size deltas by comparing each scan against the previous scan of the same folder.
   Run the same folder again — Vigil will then show <strong>previous size</strong> and the <strong>Δ column</strong> for every file (e.g. <code>+4.00 MB</code> if a file grew, <code>−500 KB</code> if it shrunk).
+  <span style="margin-left:0.5em;"><a href="{{ url_for('main.scan_new', from_scan=scan.id) }}" class="link">Rescan now →</a></span>
 </section>
 {% endif %}
 
@@ -58,7 +59,6 @@
     <div class="card-label">Total size</div>
     <div class="card-number">{{ format_bytes(scan.total_bytes) }}</div>
   </div>
-  {# Encryption stat cards only matter when we actually have encrypted backups #}
   {% if (scan.encrypted_count or 0) > 0 %}
   <div class="card card-success">
     <div class="card-label">Encrypted-named</div>
@@ -83,18 +83,45 @@
   </div>
 </section>
 
-{# ====================  Single search bar filtering all four tables  ==================== #}
+{# Search bar — filters all four tab panes simultaneously, even those not currently visible #}
 <div class="search-bar" style="margin-top: 1.5rem;">
   <input type="search"
          placeholder="Filter by job stem, filename, path…"
          data-search-target="#by-job-table,#report1-table,#report2-table,#report3-table"
          autocomplete="off">
   <span class="search-count" data-search-count></span>
-  <span class="muted small">Filters all four tables below as you type.</span>
+  <span class="muted small">Filters all reports as you type.</span>
 </div>
 
-<section>
-  <h2>By backup job — files grouped by name stem</h2>
+{# ====================  Tabbed reports  ==================== #}
+<nav class="tab-nav" role="tablist" data-tab-group="scan-reports">
+  <button type="button" class="tab-btn" data-tab="by-job" role="tab"
+          aria-controls="tab-by-job">
+    By backup job
+    <span class="tab-btn-count">{{ by_job_groups | length }}</span>
+  </button>
+  <button type="button" class="tab-btn" data-tab="size" role="tab"
+          aria-controls="tab-size">
+    Size distribution
+    <span class="tab-btn-count">{{ by_size | length }}</span>
+  </button>
+  {% if (scan.encrypted_count or 0) > 0 %}
+  <button type="button" class="tab-btn" data-tab="encryption" role="tab"
+          aria-controls="tab-encryption">
+    Encryption audit
+    {% if plain %}<span class="tab-btn-count" style="background: var(--danger-bg); color: var(--danger-text);">{{ plain | length }}</span>{% else %}<span class="tab-btn-count">✓</span>{% endif %}
+  </button>
+  {% endif %}
+  <button type="button" class="tab-btn" data-tab="timestamp" role="tab"
+          aria-controls="tab-timestamp">
+    Timestamp ordering
+    <span class="tab-btn-count">{{ by_mtime | length }}</span>
+  </button>
+</nav>
+
+{# ----- Tab pane: By backup job ----- #}
+<section class="tab-pane" data-tab-pane="by-job" data-tab-group-ref="scan-reports"
+         id="tab-by-job" role="tabpanel" aria-labelledby="by-job">
   <p class="muted small">Files with the same name (ignoring date suffix) are grouped together. <code>Sage_Owner_2026-04-28.bak_encrypted</code> and <code>Sage_Owner_2026-04-29.bak_encrypted</code> share the stem <code>Sage_Owner</code>.</p>
   <div class="grid-wrap">
   <table class="grid grid-tight" id="by-job-table">
@@ -117,9 +144,6 @@
         <td class="small">{{ g.latest_mtime.strftime('%a, %b %d %Y · %H:%M') if g.latest_mtime else '—' }}</td>
         <td class="num">{{ format_bytes(g.newest_size) }}</td>
         <td>
-          {# Only flag "no _encrypted suffix" when this scan actually has encrypted backups too —
-             i.e. we have a meaningful baseline. If 0 encrypted files exist, this folder isn't
-             a backup folder and the audit doesn't apply. #}
           {% if g.any_plain and (scan.encrypted_count or 0) > 0 %}
             <span class="pill pill-amber">no <code>_encrypted</code> suffix</span>
           {% endif %}
@@ -156,9 +180,10 @@
   </div>
 </section>
 
-<section>
-  <h2>Report 1 — Size distribution (largest first)</h2>
-  <p class="muted small">Amber = new file (no prior scan). Green = grew vs. previous scan. Red = shrunk vs. previous scan.</p>
+{# ----- Tab pane: Size distribution (Report 1) ----- #}
+<section class="tab-pane" data-tab-pane="size" data-tab-group-ref="scan-reports"
+         id="tab-size" role="tabpanel" aria-labelledby="size">
+  <p class="muted small">Largest files first. Amber row = new file (no prior scan). Green = grew vs. previous scan. Red = shrunk vs. previous scan.</p>
   <div class="grid-wrap">
   <table class="grid grid-tight" id="report1-table">
     <thead>
@@ -190,12 +215,10 @@
   </div>
 </section>
 
-{# Report 2 — Encryption audit. Only meaningful when at least one file has _encrypted in its name.
-   When zero files are encrypted-named, this isn't a backup folder and the audit doesn't apply,
-   so we skip the section entirely. #}
+{# ----- Tab pane: Encryption audit (Report 2) - only when applicable ----- #}
 {% if (scan.encrypted_count or 0) > 0 %}
-<section>
-  <h2>Report 2 — Encryption-name audit</h2>
+<section class="tab-pane" data-tab-pane="encryption" data-tab-group-ref="scan-reports"
+         id="tab-encryption" role="tabpanel" aria-labelledby="encryption">
   {% if plain %}
     <div class="alert-box alert-warn">
       <div class="alert-head"><span class="alert-icon">⚠</span><strong>{{ plain|length }} file{{ 's' if plain|length != 1 else '' }} without <code>_encrypted</code> in the filename</strong></div>
@@ -218,18 +241,16 @@
     </div>
   {% else %}
     <p class="muted">All {{ scan.file_count or 0 }} files have <code>_encrypted</code> in the filename. ✓</p>
-    {# Empty placeholder table so the search-target selector still resolves cleanly #}
     <table id="report2-table" style="display: none;"><tbody></tbody></table>
   {% endif %}
 </section>
 {% else %}
-{# No encrypted files at all. Render a hidden placeholder so the shared search bar's
-   target selector resolves without error. #}
 <table id="report2-table" style="display: none;"><tbody></tbody></table>
 {% endif %}
 
-<section>
-  <h2>Report 3 — Timestamp ordering</h2>
+{# ----- Tab pane: Timestamp ordering (Report 3) ----- #}
+<section class="tab-pane" data-tab-pane="timestamp" data-tab-group-ref="scan-reports"
+         id="tab-timestamp" role="tabpanel" aria-labelledby="timestamp">
   <p class="muted small">Files sorted oldest → newest by modification time. Day name shown to spot weekend / holiday gaps.</p>
   <div class="grid-wrap">
   <table class="grid grid-tight" id="report3-table">

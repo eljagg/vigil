@@ -136,11 +136,13 @@
 
 {# ====================  Anomalies callout  ==================== #}
 {% if anomalies %}
-<section class="anomalies-panel">
-  <div class="anomalies-head">
+<section class="anomalies-panel collapsible" data-section-id="anomalies">
+  <div class="anomalies-head collapsible-heading">
+    <span class="chevron">▼</span>
     <h2 style="margin: 0;">Anomalies — files with size changes &gt; 20%</h2>
     <span class="muted small">From the most recent scan of each path</span>
   </div>
+  <div class="collapsible-body">
   <div class="grid-wrap">
     <table class="grid grid-tight">
       <thead>
@@ -177,6 +179,7 @@
       </tbody>
     </table>
   </div>
+  </div>
 </section>
 {% endif %}
 
@@ -187,8 +190,13 @@
 </section>
 
 {# ====================  Path roll-up with expand  ==================== #}
-<section>
-  <h2>Path roll-up</h2>
+<section class="collapsible" data-section-id="path-rollup">
+  <div class="collapsible-heading">
+    <span class="chevron">▼</span>
+    <h2>Path roll-up</h2>
+    <span class="collapsible-meta">{{ per_path|length }} folder{{ 's' if per_path|length != 1 else '' }}</span>
+  </div>
+  <div class="collapsible-body">
   <p class="muted">Each row is a folder that has been scanned. Click <em>Show files</em> to see the contents inline.</p>
   {% if per_path %}
   <div class="search-bar">
@@ -237,10 +245,13 @@
         <td class="actions-cell">
           {% if r.last_scan_id %}
             <a href="{{ url_for('main.scan_view', scan_id=r.last_scan_id) }}" class="btn btn-small btn-primary">View</a>
+            <a href="{{ url_for('main.scan_new', from_scan=r.last_scan_id) }}" class="btn btn-small btn-ghost">Rescan</a>
             <button type="button" class="link"
                     data-expand-scan="{{ r.last_scan_id }}"
                     data-target="#files-row-{{ r.id }}"
                     aria-expanded="false">Show files</button>
+          {% else %}
+            <a href="{{ url_for('main.scan_new') }}" class="btn btn-small btn-ghost">New scan</a>
           {% endif %}
         </td>
       </tr>
@@ -256,11 +267,17 @@
   {% else %}
   <p class="muted">No path entries yet. <a href="{{ url_for('main.scan_new') }}">Run your first scan.</a></p>
   {% endif %}
+  </div>
 </section>
 
 {# ====================  Upcoming rotation  ==================== #}
-<section>
-  <h2>Upcoming rotation</h2>
+<section class="collapsible" data-section-id="upcoming-rotation">
+  <div class="collapsible-heading">
+    <span class="chevron">▼</span>
+    <h2>Upcoming rotation</h2>
+    <span class="collapsible-meta">{{ upcoming|length }} week{{ 's' if upcoming|length != 1 else '' }} ahead</span>
+  </div>
+  <div class="collapsible-body">
   {% if upcoming %}
   <div class="grid-wrap">
   <table class="grid grid-tight">
@@ -278,11 +295,17 @@
   {% else %}
   <p class="muted">No upcoming rotation set.</p>
   {% endif %}
+  </div>
 </section>
 
 {# ====================  Recent scans with hide  ==================== #}
-<section>
-  <h2>Recent scans</h2>
+<section class="collapsible" data-section-id="recent-scans">
+  <div class="collapsible-heading">
+    <span class="chevron">▼</span>
+    <h2>Recent scans</h2>
+    <span class="collapsible-meta">{{ recent|length }} scan{{ 's' if recent|length != 1 else '' }}</span>
+  </div>
+  <div class="collapsible-body">
   {% if recent %}
   <div class="search-bar">
     <input type="search"
@@ -296,7 +319,7 @@
     <thead>
       <tr><th>When</th><th>Path</th><th>Operator</th><th>Workstation</th>
           <th class="num">Files</th><th class="num">Size</th><th>Status</th>
-          {% if current_user.role == 'admin' %}<th>Actions</th>{% endif %}
+          <th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -313,15 +336,16 @@
           {% elif s.status == 'failed' %}<span class="status status-fail">Failed</span>
           {% else %}<span class="status status-warn">{{ s.status }}</span>{% endif %}
         </td>
-        {% if current_user.role == 'admin' %}
-        <td>
+        <td class="actions-cell">
+          <a href="{{ url_for('main.scan_new', from_scan=s.id) }}" class="link">Rescan</a>
+          {% if current_user.role == 'admin' %}
           <form method="post" action="{{ url_for('main.scan_hide', scan_id=s.id) }}" class="inline"
                 onsubmit="return confirm('Hide scan #{{ s.id }} from the dashboard?\n\nThe scan stays in the database and audit log — this just removes it from view.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="link">Hide</button>
           </form>
+          {% endif %}
         </td>
-        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
@@ -330,6 +354,7 @@
   {% else %}
   <p class="muted">No scans recorded yet.</p>
   {% endif %}
+  </div>
 </section>
 
 {% endblock %}

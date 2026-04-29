@@ -38,7 +38,7 @@
       <th class="num">Grew</th>
       <th class="num">Shrunk</th>
       <th>Status</th>
-      {% if current_user.role == 'admin' %}<th>Actions</th>{% endif %}
+      <th>Actions</th>
     </tr>
   </thead>
   <tbody>
@@ -61,22 +61,23 @@
         {% elif s.status == 'failed' %}<span class="status status-fail">Failed</span>
         {% else %}<span class="status status-warn">{{ s.status }}</span>{% endif %}
       </td>
-      {% if current_user.role == 'admin' %}
       <td class="actions-cell">
-        {% if s.is_hidden %}
-          <form method="post" action="{{ url_for('main.scan_unhide', scan_id=s.id) }}" class="inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="link">Restore</button>
-          </form>
-        {% else %}
-          <form method="post" action="{{ url_for('main.scan_hide', scan_id=s.id) }}" class="inline"
-                onsubmit="return confirm('Hide scan #{{ s.id }} from the dashboard?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="link">Hide</button>
-          </form>
+        {% if not s.is_hidden %}<a href="{{ url_for('main.scan_new', from_scan=s.id) }}" class="link">Rescan</a>{% endif %}
+        {% if current_user.role == 'admin' %}
+          {% if s.is_hidden %}
+            <form method="post" action="{{ url_for('main.scan_unhide', scan_id=s.id) }}" class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="link">Restore</button>
+            </form>
+          {% else %}
+            <form method="post" action="{{ url_for('main.scan_hide', scan_id=s.id) }}" class="inline"
+                  onsubmit="return confirm('Hide scan #{{ s.id }} from the dashboard?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="link">Hide</button>
+            </form>
+          {% endif %}
         {% endif %}
       </td>
-      {% endif %}
     </tr>
     {% endfor %}
   </tbody>

@@ -233,7 +233,24 @@ def scan_new():
         .limit(10)
     ).all()
     recent_paths = [{"path": r.path, "label": r.label, "last_entered": r.last} for r in recent_paths]
-    return render_template("scan_new.html", on_duty=on_duty, recent_paths=recent_paths)
+
+    # Rescan pre-fill: if ?from_scan=N is given, pull label + workstation from that scan.
+    prefill = {"label": "", "workstation": "", "path_hint": "", "from_scan_id": None}
+    from_scan = request.args.get("from_scan", type=int)
+    if from_scan:
+        prior = db.session.get(Scan, from_scan)
+        if prior:
+            prior_pe = db.session.get(PathEntry, prior.path_entry_id)
+            if prior_pe:
+                prefill["label"] = prior_pe.label or ""
+                prefill["path_hint"] = prior_pe.path or ""
+            prefill["workstation"] = prior.workstation or ""
+            prefill["from_scan_id"] = prior.id
+
+    return render_template(
+        "scan_new.html", on_duty=on_duty,
+        recent_paths=recent_paths, prefill=prefill,
+    )
 
 
 @bp.route("/scan/<int:scan_id>")

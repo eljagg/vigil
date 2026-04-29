@@ -5,8 +5,13 @@
 {% endblock %}
 
 {% block content %}
-<h1>Run a new backup integrity scan</h1>
+<h1>{% if prefill.from_scan_id %}Rescan{% else %}Run a new backup integrity scan{% endif %}</h1>
+
+{% if prefill.from_scan_id %}
+<p class="muted">Rescanning previously-scanned folder <strong>{{ prefill.label }}</strong>. Pick the same folder again to continue the diff history.</p>
+{% else %}
 <p class="muted">Vigil reads file metadata only — names, sizes, modification times. File contents never leave your workstation.</p>
+{% endif %}
 
 {% if on_duty and current_user and on_duty.id != current_user.id %}
 <section class="alert-box alert-warn">
@@ -25,6 +30,30 @@
   Firefox, Safari, and mobile browsers can view scan results but cannot start a new scan.
 </div>
 
+{# Privacy explainer — addresses the scary Chrome dialog operators will see #}
+<section class="privacy-block">
+  <div class="privacy-block-title">
+    <span class="privacy-icon">i</span>
+    Privacy &amp; permissions — what the browser will ask, and what Vigil actually does
+  </div>
+  <p style="margin: 0.4rem 0;">
+    When you click <strong>Browse</strong>, Chrome will show a dialog like:
+    <br>
+    <span class="quote">"Allow this site to view and copy files?"</span>
+  </p>
+  <p style="margin: 0.4rem 0;">
+    That wording is set by Chrome and applies to <em>any</em> site that uses its folder-picker API — it does not describe what Vigil does. Specifically:
+  </p>
+  <ul>
+    <li><span class="privacy-yes">✓ What Vigil reads</span> — three fields per file: <strong>filename</strong>, <strong>size in bytes</strong>, <strong>last-modified timestamp</strong></li>
+    <li><span class="privacy-no">✗ What Vigil does NOT read</span> — file contents. Vigil never opens the actual bytes of any file.</li>
+    <li><span class="privacy-no">✗ What Vigil does NOT do</span> — copy, upload, or download files. The data sent to the server is a JSON manifest of names and sizes only.</li>
+  </ul>
+  <p class="muted small" style="margin: 0.5rem 0 0 0;">
+    Tip for security reviewers: open Chrome DevTools → Network tab before running a scan. The only request is a single <code>POST /api/scan/submit</code> with a JSON body of file metadata — no file content transfers.
+  </p>
+</section>
+
 <section class="alert-box alert-warn" style="margin-bottom: 1rem;">
   <div class="alert-head">
     <span class="alert-icon">!</span>
@@ -40,7 +69,13 @@
 <section class="scanner-card">
   <div class="scanner-step">
     <h3>1 · Pick the backup folder</h3>
-    <p class="muted small">Click <em>Browse</em> and choose the folder where the backup files live (typically your mapped drive — <code>Z:\Backup Logs\Archive</code> or similar).</p>
+    <p class="muted small">
+      {% if prefill.from_scan_id and prefill.path_hint %}
+        Pick the same folder you used last time — its picker name was <code>{{ prefill.path_hint }}</code>.
+      {% else %}
+        Click <em>Browse</em> and choose the folder where the backup files live (typically your mapped drive — <code>Z:\Backup Logs\Archive</code> or similar).
+      {% endif %}
+    </p>
     <button type="button" class="btn btn-primary" id="browse-btn">Browse…</button>
     <div class="picked-folder" id="picked-folder" style="display: none; margin-top: 0.7rem;"></div>
   </div>
@@ -50,6 +85,7 @@
     <p class="muted small">Browsers don't expose the full Windows path — only the folder name. Type the real path here so this scan can be identified later (e.g. <code>Z:\Backup Logs\Archive on MARS</code>).</p>
     <input type="text" id="label-input" maxlength="160" required
            placeholder="e.g. Z:\Backup Logs\Archive on MARS"
+           value="{{ prefill.label }}"
            class="prominent-input">
   </div>
 
@@ -58,6 +94,7 @@
     <p class="muted small">A short name for this workstation, e.g. <code>MARS-WS-01</code>. Helps identify which machine ran the scan.</p>
     <input type="text" id="workstation-input" maxlength="120"
            placeholder="e.g. MARS-WS-01"
+           {% if prefill.workstation %}value="{{ prefill.workstation }}"{% endif %}
            class="prominent-input">
   </div>
 
