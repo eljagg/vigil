@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#1a1830" media="(prefers-color-scheme: dark)">
   <title>{% block title %}Vigil{% endblock %} — {{ company_name }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <script>
+  <script nonce="{{ csp_nonce }}">
     // No-flash theme bootstrap. Resolves the actual theme before paint.
     (function() {
       var saved = "{{ theme }}";

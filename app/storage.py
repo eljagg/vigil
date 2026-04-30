@@ -67,9 +67,30 @@ def upload_logo(stream, filename: str, content_type: str) -> str:
 
 
 def read_local_upload(filename: str) -> Optional[bytes]:
-    """Used by the dev-only /uploads/<filename> endpoint."""
-    path = os.path.join("/tmp/vigil-uploads", filename)
-    if not os.path.isfile(path):
+    """Used by the dev-only /uploads/<filename> endpoint.
+
+    Hardened against path traversal: rejects anything containing path
+    separators, parent-directory tokens, or null bytes. The caller is
+    expected to pass a basename only (as written by ``upload_logo``).
+    """
+    base_dir = "/tmp/vigil-uploads"
+    # Normalize basename and reject anything dangerous
+    if not filename:
         return None
-    with open(path, "rb") as f:
+    if "/" in filename or "\\" in filename or "\x00" in filename:
+        return None
+    if filename in (".", ".."):
+        return None
+    # Resolve and verify the resulting path is still inside base_dir
+    candidate = os.path.realpath(os.path.join(base_dir, filename))
+    base_real = os.path.realpath(base_dir)
+    # commonpath raises if filesystems differ; in our case both are absolute
+    try:
+        if os.path.commonpath([candidate, base_real]) != base_real:
+            return None
+    except ValueError:
+        return None
+    if not os.path.isfile(candidate):
+        return None
+    with open(candidate, "rb") as f:
         return f.read()

@@ -25,13 +25,37 @@ def _login_rate_limit():
     return current_app.config.get("LOGIN_RATE_LIMIT", "5 per minute")
 
 
+def _safe_next_url(candidate: str) -> str:
+    """Validate a 'next' redirect target. Returns the candidate if it's a
+    safe same-origin relative path; otherwise the dashboard.
+
+    Rejects: absolute URLs (http://…, //evil.com), schemeless authority
+    forms, and anything not starting with a single '/'. This prevents
+    open-redirect phishing where an attacker crafts a Vigil login link
+    with ?next=https://evil.com to capture users post-login.
+    """
+    fallback = url_for("main.dashboard")
+    if not candidate:
+        return fallback
+    # Must start with '/' but not '//' (which is a protocol-relative URL)
+    if not candidate.startswith("/") or candidate.startswith("//"):
+        return fallback
+    # Reject backslash tricks (some browsers normalize \\ to //)
+    if "\\" in candidate:
+        return fallback
+    # Optional defense: reject control characters
+    if any(ord(c) < 32 for c in candidate):
+        return fallback
+    return candidate
+
+
 @bp.route("/login", methods=["GET", "POST"])
 @limiter.limit(_login_rate_limit, methods=["POST"])
 def login():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-        next_url = request.form.get("next") or url_for("main.dashboard")
+        next_url = _safe_next_url(request.form.get("next") or "")
 
         user = authenticate(username, password)
         if not user:
@@ -42,7 +66,7 @@ def login():
         if user.totp_enabled:
             # Stash pending login for the 2FA step.
             session["pending_user_id"] = user.id
-            session["pending_next"] = next_url
+            session["pending_next"] = next_url  # already validated above
             return redirect(url_for("auth.login_2fa"))
 
         login_user(user)
@@ -52,7 +76,7 @@ def login():
         audit.record("login", {"username": username, "auth_source": user.auth_source})
         return redirect(next_url)
 
-    return render_template("login.html", next_url=request.args.get("next", ""))
+    return render_template("login.html", next_url=_safe_next_url(request.args.get("next", "")))
 
 
 @bp.route("/login/2fa", methods=["GET", "POST"])
@@ -69,7 +93,8 @@ def login_2fa():
     if request.method == "POST":
         code = (request.form.get("code") or "").strip()
         if verify_totp(user.totp_secret, code):
-            next_url = session.pop("pending_next", None) or url_for("main.dashboard")
+            stashed = session.pop("pending_next", None) or ""
+            next_url = _safe_next_url(stashed)
             session.pop("pending_user_id", None)
             login_user(user)
             g.user = user

@@ -40,21 +40,34 @@ def create_app(config_class: type = Config) -> Flask:
     from .auth import load_current_user
     app.before_request(load_current_user)
 
+    # Generate a per-request CSP nonce. Used to allow our single inline
+    # theme-bootstrap script in base.html without resorting to 'unsafe-inline'.
+    @app.before_request
+    def _csp_nonce():
+        import secrets as _secrets
+        from flask import g as _g
+        _g.csp_nonce = _secrets.token_urlsafe(16)
+
     # Security headers
     @app.after_request
     def _security_headers(resp):
+        from flask import g as _g
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
-        # CSP allows inline styles (theme switcher) and a tiny bootstrap script
-        # to set the theme before render to avoid flash-of-wrong-theme.
+        # CSP: tight defaults, nonce-based inline scripts only.
+        # 'unsafe-inline' for styles is retained because the theme system
+        # uses inline style attributes for some progress bars and sparklines.
+        nonce = getattr(_g, "csp_nonce", None) or ""
         resp.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
             "img-src 'self' data: https:; "
             "style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "frame-ancestors 'none'"
+            f"script-src 'self' 'nonce-{nonce}'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
         )
         if app.config.get("SESSION_COOKIE_SECURE"):
             resp.headers.setdefault(
@@ -95,6 +108,7 @@ def create_app(config_class: type = Config) -> Flask:
             "now": now,
             "today_long": now.strftime("%A, %B %d, %Y"),
             "current_user": user,
+            "csp_nonce": getattr(g, "csp_nonce", ""),
         }
 
     # Blueprints

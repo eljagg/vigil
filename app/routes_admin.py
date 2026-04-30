@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+import re
 
 from flask import (
     Blueprint, current_app, flash, g, redirect, render_template, request,
@@ -43,8 +44,18 @@ def users_new():
     if not username or not full_name or role not in ("admin", "operator"):
         flash("Username, full name, and a valid role are required.", "danger")
         return redirect(url_for("admin.users"))
+    if not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", username):
+        flash("Username must be 1-64 characters: letters, digits, dot, underscore, or hyphen.", "danger")
+        return redirect(url_for("admin.users"))
     if auth_source == "local" and len(password) < 12:
         flash("Local-account passwords must be at least 12 characters.", "danger")
+        return redirect(url_for("admin.users"))
+
+    # Pre-check uniqueness so we can show a clean message instead of a raw
+    # IntegrityError stack from Postgres.
+    existing = db.session.scalar(select(User).where(User.username == username))
+    if existing:
+        flash(f"A user with username '{username}' already exists.", "danger")
         return redirect(url_for("admin.users"))
 
     try:
@@ -61,7 +72,9 @@ def users_new():
         flash(f"User {username} created.", "success")
     except Exception as e:
         db.session.rollback()
-        flash(f"Could not create user: {e}", "danger")
+        # Log full detail server-side; show generic message to user
+        current_app.logger.exception("user creation failed")
+        flash("Could not create user. Check the server logs for details.", "danger")
     return redirect(url_for("admin.users"))
 
 
@@ -405,7 +418,7 @@ def paths_new():
     """Create a new expected path *without* needing a scan first.
 
     The path's 'path' field will hold the admin's free-text identifier
-    (e.g. 'Sage_Owner_full_backup'). When a scan is later run against a
+    (e.g. 'nightly_full_backup'). When a scan is later run against a
     folder of the same name, it'll just create another PathEntry — that
     isn't a problem because Vigil already groups by path string in the
     rollup. The expected entry exists primarily to surface the path as

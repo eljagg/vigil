@@ -50,7 +50,7 @@ def extract_job_stem(filename: str) -> str:
     Strips common archive extensions and trailing dates, leaving the
     name of the backup job itself. Examples:
 
-        Sage_Owner_2026-04-28.bak_encrypted  -> Sage_Owner
+        nightly_2026-04-28.bak_encrypted     -> nightly
         db_full_20260428_120000.sql.gz       -> db_full
         differential.bak                     -> differential
         weekly_full_2026-04-28.bak_encrypted -> weekly_full
@@ -89,9 +89,26 @@ class IncomingFile:
 
 
 def parse_payload(items: list[dict]) -> list[IncomingFile]:
-    """Validate the browser payload and convert to IncomingFile."""
+    """Validate the browser payload and convert to IncomingFile.
+
+    Defensive bounds:
+      - relative_path / filename: 1..512 chars, no NUL
+      - size_bytes:               0..2^53 (~9 PB; well above any plausible file)
+      - mtime:                    valid ISO 8601, last 25 years through 1 year future
+                                  (filesystems sometimes have wildly bogus mtimes)
+    Items that fail any check are silently dropped — the resulting scan
+    will simply be missing them, which is preferable to crashing the diff.
+    """
     out = []
+    MAX_PATH_LEN = 512
+    MAX_SIZE = 1 << 53  # ~9 PB
+    now = datetime.datetime.now(datetime.UTC)
+    earliest = now - datetime.timedelta(days=365 * 25)
+    latest = now + datetime.timedelta(days=365)
+
     for it in items:
+        if not isinstance(it, dict):
+            continue
         rel = (it.get("relative_path") or "").strip()
         name = (it.get("filename") or "").strip()
         size = it.get("size_bytes")
@@ -99,14 +116,25 @@ def parse_payload(items: list[dict]) -> list[IncomingFile]:
 
         if not rel or not name or size is None or mtime_raw is None:
             continue
+        if len(rel) > MAX_PATH_LEN or len(name) > MAX_PATH_LEN:
+            continue
+        if "\x00" in rel or "\x00" in name:
+            continue
         try:
             size_int = int(size)
         except (TypeError, ValueError):
             continue
+        if size_int < 0 or size_int > MAX_SIZE:
+            continue
         try:
             # JS toISOString() produces "...Z"; fromisoformat handles it on 3.11+
             mtime_dt = datetime.datetime.fromisoformat(mtime_raw.replace("Z", "+00:00"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, AttributeError):
+            continue
+        # Make timezone-aware for comparison
+        if mtime_dt.tzinfo is None:
+            mtime_dt = mtime_dt.replace(tzinfo=datetime.UTC)
+        if mtime_dt < earliest or mtime_dt > latest:
             continue
 
         out.append(IncomingFile(

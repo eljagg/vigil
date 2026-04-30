@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import functools
+import re
 from typing import Any, Callable, Optional
 
 import pyotp
@@ -15,6 +16,12 @@ from .models import User
 
 
 _hasher = PasswordHasher()
+
+# A pre-computed argon2 hash used as a decoy when the username doesn't exist.
+# Verifying against this takes the same wall-clock time as verifying a real
+# user's hash, preventing timing-based username enumeration on /login.
+# The plaintext hashed here is irrelevant — verification will always fail.
+_DECOY_HASH = _hasher.hash("decoy-password-for-timing-stability")
 
 
 # ----------------------------- passwords -----------------------------
@@ -31,6 +38,15 @@ def verify_password(stored: str, plaintext: str) -> bool:
         return True
     except (VerifyMismatchError, InvalidHash):
         return False
+
+
+def _consume_time_like_verify() -> None:
+    """Burn argon2-equivalent CPU when the username doesn't exist, so an
+    attacker can't tell 'no such user' from 'wrong password' by timing."""
+    try:
+        _hasher.verify(_DECOY_HASH, "wrong-password")
+    except (VerifyMismatchError, InvalidHash):
+        pass
 
 
 # ----------------------------- 2FA -----------------------------
@@ -59,7 +75,12 @@ def authenticate_local(username: str, password: str) -> Optional[User]:
             User.auth_source == "local",
         )
     )
-    if user and verify_password(user.password_hash, password):
+    if user is None:
+        # Do an equivalent-cost hash verification against a decoy so the
+        # response time doesn't reveal whether this username exists.
+        _consume_time_like_verify()
+        return None
+    if verify_password(user.password_hash, password):
         return user
     return None
 
@@ -67,6 +88,12 @@ def authenticate_local(username: str, password: str) -> Optional[User]:
 def authenticate_ldap(username: str, password: str) -> Optional[User]:
     cfg = current_app.config
     if not cfg.get("LDAP_ENABLED") or not cfg.get("LDAP_SERVER"):
+        return None
+    # Whitelist usernames before injecting into LDAP bind string. Without this,
+    # a username like 'admin)(uid=*' could manipulate the LDAP filter/DN.
+    # The accepted character set covers all common AD/LDAP username styles.
+    if not re.fullmatch(r"[A-Za-z0-9._\-]{1,64}", username):
+        current_app.logger.info("LDAP auth rejected: invalid username chars")
         return None
     user = db.session.scalar(
         select(User).where(

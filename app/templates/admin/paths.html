@@ -20,11 +20,11 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Label <span class="muted small">(shown on dashboard)</span>
       <input type="text" name="label" required maxlength="160"
-             placeholder="e.g. Sage Owner full backup">
+             placeholder="e.g. Nightly full backup">
     </label>
     <label>Picker hint <span class="muted small">(optional)</span>
       <input type="text" name="path" maxlength="120"
-             placeholder="e.g. SageOwner — used to match scans">
+             placeholder="e.g. nightly — used to match scans">
     </label>
     <label>Cadence
       <select name="expected_cadence">

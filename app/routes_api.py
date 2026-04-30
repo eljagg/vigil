@@ -33,10 +33,21 @@ def scan_submit():
         }
     """
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="payload must be a JSON object"), 400
+
     path = (data.get("path") or "").strip()
     label = (data.get("label") or "").strip()
     workstation = (data.get("workstation") or "").strip() or None
     items = data.get("files") or []
+
+    # Length caps mirror the database column widths in app/models.py
+    if len(path) > 512:
+        return jsonify(ok=False, error="path too long (max 512 chars)"), 400
+    if len(label) > 160:
+        return jsonify(ok=False, error="label too long (max 160 chars)"), 400
+    if workstation and len(workstation) > 120:
+        return jsonify(ok=False, error="workstation too long (max 120 chars)"), 400
 
     if not path:
         return jsonify(ok=False, error="path is required"), 400
