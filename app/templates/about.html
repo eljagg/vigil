@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}About Vigil{% endblock %}
+{% block content %}
+<div class="info-page">
+
+<h1>About Vigil</h1>
+<p class="meta-line">Version {{ version }} · Backup integrity check</p>
+
+<p>
+  Vigil is a backup integrity check tool. It helps operations teams verify
+  that scheduled backup files exist, are correctly named, and have plausible
+  sizes — week after week, with a clear audit trail of who scanned what
+  and when.
+</p>
+
+<h2>What Vigil does</h2>
+<ul>
+  <li>Records that a folder was scanned, by whom, on which workstation, and at what time.</li>
+  <li>Compares each file's size against the previous scan of the same folder, surfacing files that grew, shrunk, or appeared for the first time.</li>
+  <li>Flags files whose sizes changed by more than a threshold (default 20%) as anomalies worth investigating.</li>
+  <li>Tracks a weekly rotation so the right operator is on duty for backup verification.</li>
+  <li>Supports admin-defined "expected paths" with cadences (daily / weekly / fortnightly) and surfaces overdue paths automatically.</li>
+  <li>Sends weekly reminder emails to the on-duty operator listing paths still due for scanning.</li>
+</ul>
+
+<h2>How Vigil works (architecture)</h2>
+<p>
+  Vigil is built around a deliberate split between the browser and the server,
+  chosen specifically to keep file contents off the network. When an operator
+  clicks <strong>Browse</strong> on the New Scan page, the browser's File System
+  Access API hands Vigil a permission token for the chosen folder. The browser
+  then walks the folder (including all subfolders) reading only three pieces of
+  information per file: filename, size in bytes, and last-modified timestamp.
+  This list — a "manifest" — is the only thing posted to the Vigil server.
+</p>
+<p>
+  The server stores the manifest in a Postgres database and computes the diff
+  against the previous scan of the same folder. No file content ever crosses
+  the network. No file content is ever stored.
+</p>
+<p>
+  For details on exactly what Vigil reads, what it does <em>not</em> read, and
+  how to verify these claims independently, see the
+  <a href="{{ url_for('main.data_handling') }}">Data handling</a> page.
+</p>
+
+<h2>Technical stack</h2>
+<ul>
+  <li>Backend: Python 3.12 / Flask 3 / SQLAlchemy 2 / PostgreSQL 16</li>
+  <li>Frontend: vanilla JavaScript using the File System Access API (Chrome, Edge, Brave, Opera, Chromium)</li>
+  <li>Authentication: argon2id password hashing, optional TOTP 2FA, optional LDAP/AD integration</li>
+  <li>Hosting: containerized, deployed via Railway with Postgres plugin</li>
+</ul>
+
+<h2>Browser support</h2>
+<p>
+  Running scans requires the File System Access API, which is supported by
+  Chromium-based browsers (Chrome, Edge, Brave, Opera, Vivaldi) on Windows,
+  macOS, and Linux. Firefox and Safari can <em>view</em> existing scans but
+  cannot run new ones — Mozilla and Apple have not yet shipped this API.
+  Mobile browsers are not supported for scanning.
+</p>
+
+<h2>Credits</h2>
+<p>
+  Designed and built by Omar McLeod, 2026.
+</p>
+
+<p style="margin-top: 2rem; color: var(--text-muted);">
+  Questions or concerns about how Vigil handles your data?
+  See the <a href="{{ url_for('main.data_handling') }}">Data handling</a> page
+  for a detailed breakdown and step-by-step verification guide for auditors.
+</p>
+
+</div>
+{% endblock %}

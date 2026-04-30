@@ -31,6 +31,27 @@ def healthz():
         return jsonify(status="degraded", error=str(e)), 503
 
 
+# ---------------------- Public info pages ----------------------
+
+# Vigil's published version. Update on every release.
+VIGIL_VERSION = "2.1.0"
+
+
+@bp.route("/about")
+def about():
+    """Public 'About Vigil' page — what the app is, who built it, version.
+    Intentionally accessible without login so auditors and reviewers can see it."""
+    return render_template("about.html", version=VIGIL_VERSION)
+
+
+@bp.route("/data-handling")
+def data_handling():
+    """Public 'Data Handling' assurance page — what Vigil reads, what it does
+    NOT read, where data goes, and how to verify each claim independently.
+    Intentionally accessible without login."""
+    return render_template("data_handling.html", version=VIGIL_VERSION)
+
+
 # ---------------------- Dashboard helpers ----------------------
 
 def _storage_trend(days: int = 14) -> list[dict]:

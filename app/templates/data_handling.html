@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Data handling — Vigil{% endblock %}
+{% block content %}
+<div class="info-page">
+
+<h1>Data handling</h1>
+<p class="meta-line">Version {{ version }} · How Vigil handles your data, and how to verify it</p>
+
+<p>
+  This page exists for operators, security reviewers, and auditors who need
+  to understand exactly what Vigil reads, what it does <em>not</em> read,
+  and how to verify each claim independently. Every claim on this page is
+  designed to be checkable without taking our word for it.
+</p>
+
+<h2>Summary in plain language</h2>
+
+<div class="callout callout-yes">
+  <strong>What Vigil reads</strong>
+  Three fields per file, and only these three:
+  <ul style="margin-bottom: 0;">
+    <li><strong>Filename</strong> — e.g. <code>Sage_Owner_2026-04-29.bak_encrypted</code></li>
+    <li><strong>Size in bytes</strong> — e.g. <code>9500000000</code></li>
+    <li><strong>Last-modified timestamp</strong> — e.g. <code>2026-04-29T02:30:00Z</code></li>
+  </ul>
+</div>
+
+<div class="callout callout-no">
+  <strong>What Vigil does NOT read</strong>
+  <ul style="margin-bottom: 0;">
+    <li>File contents — Vigil never opens the actual bytes of any file.</li>
+    <li>File ownership, permissions, or extended attributes.</li>
+    <li>Encrypted file payloads — the <code>_encrypted</code> in a filename is checked as a string suffix only; Vigil never attempts to decrypt anything.</li>
+  </ul>
+</div>
+
+<div class="callout callout-no">
+  <strong>What Vigil does NOT do</strong>
+  <ul style="margin-bottom: 0;">
+    <li>Copy files anywhere.</li>
+    <li>Upload files to any server.</li>
+    <li>Download files from any source.</li>
+    <li>Modify files on disk in any way (Vigil only requests <em>read</em> permission, not write).</li>
+    <li>Send data to any third party. The only network destination is the Vigil server itself.</li>
+  </ul>
+</div>
+
+<h2>Where data goes</h2>
+<p>
+  When an operator runs a scan, the browser walks the chosen folder and
+  builds an in-memory list of <code>{filename, size_bytes, mtime}</code>
+  records — one per file. This list is serialized as JSON and posted in a
+  single HTTP request to the Vigil server's <code>/api/scan/submit</code>
+  endpoint. The server stores the manifest in its Postgres database and
+  computes the diff against the previous scan of the same folder.
+</p>
+<p>
+  No file content is ever transmitted. No file content is ever stored.
+  There is no caching layer. There is no "raw upload" path.
+</p>
+
+<h2>How to verify these claims</h2>
+<p>
+  These claims are not asking for trust. Each one can be verified
+  independently using one of the methods below.
+</p>
+
+<h3>Verification method 1 — Inspect the network traffic</h3>
+<p>
+  This is the strongest single piece of evidence and takes about 30 seconds.
+</p>
+<ol>
+  <li>Open Vigil in Chrome (or any Chromium browser).</li>
+  <li>Press <strong>F12</strong> to open DevTools.</li>
+  <li>Click the <strong>Network</strong> tab.</li>
+  <li>Tick <strong>Preserve log</strong> so requests aren't cleared on navigation.</li>
+  <li>In Vigil, run a scan against any folder.</li>
+  <li>In the Network tab, find the <code>POST /api/scan/submit</code> request.</li>
+  <li>Click it, then the <strong>Payload</strong> tab to see exactly what was sent.</li>
+</ol>
+<p>
+  You will see a JSON body containing only the three fields per file. No
+  base64 blobs. No binary data. No file contents in any form.
+  The total payload size is small even for very large folders — a 1 GB
+  backup folder produces only tens of kilobytes of metadata.
+</p>
+
+<h3>Verification method 2 — Read the source code</h3>
+<p>
+  Vigil is open by design. The code that walks the folder and builds the
+  manifest is in <code>app/static/js/scanner.js</code>, in a function
+  named <code>walkDirectory</code>. The relevant section is roughly 40
+  lines of plain JavaScript. The reviewer should look for the calls below.
+</p>
+
+<p><strong>What you will find:</strong></p>
+<ul>
+  <li><code>entry.getFile()</code> — returns a File object describing the file.</li>
+  <li><code>file.size</code> — reads the size attribute (a number).</li>
+  <li><code>file.lastModified</code> — reads the timestamp attribute (a number).</li>
+  <li><code>file.name</code> — reads the filename (a string).</li>
+</ul>
+
+<p><strong>What you will NOT find anywhere in the codebase:</strong></p>
+<ul>
+  <li><code>file.text()</code> — would read file contents as a string.</li>
+  <li><code>file.arrayBuffer()</code> — would read file contents as bytes.</li>
+  <li><code>file.stream()</code> — would read file contents as a stream.</li>
+  <li><code>FileReader</code> — alternative API for reading file contents.</li>
+</ul>
+<p>
+  These four are the <em>only</em> ways a browser can read file contents.
+  None of them appear in Vigil's source. A reviewer can confirm this with
+  a simple text search.
+</p>
+
+<h3>Verification method 3 — Inspect the database schema</h3>
+<p>
+  Even if the browser somehow sent file contents, the Vigil server has
+  nowhere to store them. The database schema for file records is defined
+  in <code>app/models.py</code> as the <code>FileSnapshot</code> class,
+  with columns:
+</p>
+<ul>
+  <li><code>relative_path</code> (text) — path inside the scanned folder</li>
+  <li><code>filename</code> (text) — the file's name</li>
+  <li><code>size_bytes</code> (integer) — the size</li>
+  <li><code>mtime</code> (timestamp) — the modification time</li>
+  <li><code>is_encrypted_named</code> (boolean) — derived from the filename suffix</li>
+  <li><code>prev_size_bytes</code>, <code>size_delta_bytes</code>, <code>is_new</code> — diff fields, all derived from sizes</li>
+</ul>
+<p>
+  There is no column to store file content in any form. The receiving API
+  endpoint (<code>app/routes_api.py</code>) ignores any extra fields a
+  client might send.
+</p>
+
+<h3>Verification method 4 — Audit the network policy</h3>
+<p>
+  Vigil's container is configured to only accept inbound traffic on its
+  HTTPS port. There is no outbound connection initiated by Vigil to any
+  third-party service for scan data. The only outbound connection Vigil
+  may make is to a configured email backend (SMTP relay or Resend API)
+  when sending weekly reminders — and those emails contain no file data,
+  only the names and counts of scanned paths.
+</p>
+
+<h2>Permissions Vigil requests</h2>
+<p>
+  When an operator clicks Browse, Chrome shows a dialog like:
+  <em>"Allow this site to view and copy files?"</em>
+</p>
+<p>
+  This wording is set by Chrome and applies to <em>any</em> site that uses
+  the File System Access API. It describes the maximum capability the API
+  could grant — not what Vigil actually does with that capability. Vigil
+  requests <strong>read-only</strong> permission. It does not request write
+  permission. The "copy" word in Chrome's dialog refers to JavaScript's
+  ability to copy file contents <em>into the browser tab's memory</em> —
+  which Vigil does not do, as documented above.
+</p>
+
+<h2>Data retention</h2>
+<p>
+  Vigil retains scan manifests indefinitely by default — they are part of
+  the audit trail. Administrators can hide individual scans (which removes
+  them from operator views but preserves them in the database for audit).
+  The data retained per scan is the same metadata described above:
+  filenames, sizes, timestamps. No file content.
+</p>
+
+<h2>Self-host considerations</h2>
+<p>
+  Vigil is designed to be self-hosted inside your own infrastructure. When
+  deployed inside your network, file metadata never leaves your control.
+  The only third-party touchpoint (in default configuration) is the email
+  delivery backend, if configured.
+</p>
+
+<h2>Questions</h2>
+<p>
+  This page is intended to give security reviewers a complete picture without
+  needing to ask. If a question isn't answered here, please contact your
+  Vigil administrator or the project author directly.
+</p>
+
+<p style="margin-top: 2rem;">
+  <a href="{{ url_for('main.about') }}">← Back to About</a>
+</p>
+
+</div>
+{% endblock %}

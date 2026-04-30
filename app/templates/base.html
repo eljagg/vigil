@@ -92,6 +92,10 @@
 
 <footer class="footer">
   <span>{{ footer_credit }}</span>
+  <span class="footer-sep">·</span>
+  <a href="{{ url_for('main.about') }}" class="footer-link">About</a>
+  <span class="footer-sep">·</span>
+  <a href="{{ url_for('main.data_handling') }}" class="footer-link">Data handling</a>
 </footer>
 
 <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
