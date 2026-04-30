@@ -3,6 +3,12 @@
 {% block content %}
 <div class="info-page">
 
+{% if not current_user %}
+<p style="margin-bottom: 1rem;">
+  <a href="{{ url_for('auth.login') }}" class="link">← Back to sign in</a>
+</p>
+{% endif %}
+
 <h1>Data handling</h1>
 <p class="meta-line">Version {{ version }} · How Vigil handles your data, and how to verify it</p>
 
@@ -186,6 +192,10 @@
 
 <p style="margin-top: 2rem;">
   <a href="{{ url_for('main.about') }}">← Back to About</a>
+  {% if not current_user %}
+  <span class="footer-sep">·</span>
+  <a href="{{ url_for('auth.login') }}">Back to sign in</a>
+  {% endif %}
 </p>
 
 </div>

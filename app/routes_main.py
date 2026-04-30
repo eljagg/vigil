@@ -34,7 +34,7 @@ def healthz():
 # ---------------------- Public info pages ----------------------
 
 # Vigil's published version. Update on every release.
-VIGIL_VERSION = "2.1.1"
+VIGIL_VERSION = "2.1.2"
 
 
 @bp.route("/about")

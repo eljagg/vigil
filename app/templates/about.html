@@ -3,6 +3,12 @@
 {% block content %}
 <div class="info-page">
 
+{% if not current_user %}
+<p style="margin-bottom: 1rem;">
+  <a href="{{ url_for('auth.login') }}" class="link">← Back to sign in</a>
+</p>
+{% endif %}
+
 <h1>About Vigil</h1>
 <p class="meta-line">Version {{ version }} · Backup integrity check</p>
 
