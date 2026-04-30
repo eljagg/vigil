@@ -51,7 +51,7 @@
     That wording is set by Chrome and applies to <em>any</em> site that uses its folder-picker API — it does not describe what Vigil does. Specifically:
   </p>
   <ul>
-    <li><span class="privacy-yes">✓ What Vigil reads</span> — three fields per file: <strong>filename</strong>, <strong>size in bytes</strong>, <strong>last-modified timestamp</strong></li>
+    <li><span class="privacy-yes">✓ What Vigil reads</span> — three fields per file: <strong>filename</strong>, <strong>size in bytes</strong>, <strong>last-modified timestamp</strong>. Files at any nesting depth are included, with their relative path preserved.</li>
     <li><span class="privacy-no">✗ What Vigil does NOT read</span> — file contents. Vigil never opens the actual bytes of any file.</li>
     <li><span class="privacy-no">✗ What Vigil does NOT do</span> — copy, upload, or download files. The data sent to the server is a JSON manifest of names and sizes only.</li>
   </ul>
@@ -128,7 +128,7 @@
 
   <div class="scanner-step">
     <h3>4 · Run the scan</h3>
-    <p class="muted small">Vigil walks the folder, builds the manifest in your browser, and submits it for diff against the previous scan of this folder.</p>
+    <p class="muted small">Vigil walks the folder <strong>and all of its subfolders</strong>, builds the manifest in your browser, and submits it for diff against the previous scan. Backups stored in nested directories (e.g. <code>week1/</code>, <code>week2/</code>, <code>incremental/daily/</code>) are all captured.</p>
     <button type="button" class="btn btn-primary" id="run-btn" disabled>Run scan</button>
   </div>
 

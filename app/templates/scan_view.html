@@ -61,6 +61,11 @@
   <div class="card card-info">
     <div class="card-label">Files</div>
     <div class="card-number">{{ scan.file_count or 0 }}</div>
+    {% if folder_count and folder_count > 1 %}
+    <div class="card-sub muted small">across {{ folder_count }} folder{{ 's' if folder_count != 1 else '' }}{% if max_depth > 0 %} ({{ max_depth }} level{{ 's' if max_depth != 1 else '' }} deep){% endif %}</div>
+    {% elif scan.file_count %}
+    <div class="card-sub muted small">in this folder only</div>
+    {% endif %}
   </div>
   <div class="card card-info">
     <div class="card-label">Total size</div>
@@ -147,7 +152,7 @@
     </thead>
     <tbody>
       {% for g in by_job_groups %}
-      <tr data-search-text="{{ g.stem|lower }} {% for f in g.files %}{{ f.filename|lower }} {% endfor %}">
+      <tr data-search-text="{{ g.stem|lower }} {% for f in g.files %}{{ f.filename|lower }} {{ f.relative_path|lower }} {% endfor %}">
         <td class="mono"><strong>{{ g.stem }}</strong></td>
         <td class="num">{{ g.count }}</td>
         <td class="num">{{ format_bytes(g.total_bytes) }}</td>
@@ -170,7 +175,12 @@
               <tbody>
                 {% for f in g.files %}
                 <tr class="{% if f.is_new %}row-new{% elif f.size_delta_bytes is not none and f.size_delta_bytes < 0 %}row-shrunk{% elif f.size_delta_bytes is not none and f.size_delta_bytes > 0 %}row-grew{% endif %}">
-                  <td class="mono">{{ f.filename }}</td>
+                  <td class="mono">
+                    {{ f.filename }}
+                    {% if f.relative_path and f.relative_path != f.filename %}
+                      <div class="muted small mono">in <code>{{ f.relative_path[:-(f.filename|length)-1] }}/</code></div>
+                    {% endif %}
+                  </td>
                   <td class="small">{{ f.mtime_human }}</td>
                   <td class="num">{{ format_bytes(f.size_bytes) }}</td>
                   <td class="num">
@@ -277,7 +287,12 @@
       <tr>
         <td><span class="pill pill-info">{{ f.mtime_day[:3] }}</span></td>
         <td class="small">{{ f.mtime_human }}</td>
-        <td class="mono">{{ f.filename }}</td>
+        <td class="mono">
+          {{ f.filename }}
+          {% if f.relative_path and f.relative_path != f.filename %}
+            <div class="muted small mono">in <code>{{ f.relative_path[:-(f.filename|length)-1] }}/</code></div>
+          {% endif %}
+        </td>
         <td class="num">{{ format_bytes(f.size_bytes) }}</td>
       </tr>
       {% endfor %}

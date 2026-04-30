@@ -379,6 +379,21 @@ def scan_view(scan_id: int):
     by_mtime = sorted(files_data, key=lambda f: f["mtime"] or datetime.datetime.min)
     plain = [f for f in files_data if not f["is_encrypted_named"]]
 
+    # v2.0.9: count distinct subfolders to surface "walks subfolders" reassurance.
+    # A file at the picked-folder root has no '/' in its relative_path; nested
+    # files do. We count both the picked folder itself and any deeper folders.
+    folders = {""}  # the picked folder root counts as one
+    max_depth = 0
+    for f in files_data:
+        rel = f.get("relative_path") or ""
+        if "/" in rel:
+            parent = rel.rsplit("/", 1)[0]
+            folders.add(parent)
+            depth = parent.count("/") + 1
+            if depth > max_depth:
+                max_depth = depth
+    folder_count = len(folders)
+
     # Group by backup job stem
     by_job: dict[str, list[dict]] = defaultdict(list)
     for f in files_data:
@@ -409,6 +424,7 @@ def scan_view(scan_id: int):
         scheduled={"id": sched.id, "username": sched.username, "full_name": sched.full_name} if sched else None,
         by_size=by_size, by_mtime=by_mtime, plain=plain,
         by_job_groups=by_job_groups,
+        folder_count=folder_count, max_depth=max_depth,
         format_bytes=scanner.format_bytes, format_delta=scanner.format_delta,
     )
 
